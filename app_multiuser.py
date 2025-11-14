@@ -549,7 +549,7 @@ def show_dashboard(user_id):
         today_tasks = get_tasks(user_id, status='pending')
         if not today_tasks.empty:
             today_tasks['due_date'] = pd.to_datetime(today_tasks['due_date'])
-            urgent_tasks = today_tasks[today_tasks['due_date'] <= datetime.now().date()]
+            urgent_tasks = today_tasks[today_tasks['due_date'] <= pd.Timestamp(datetime.now().date())]
             if not urgent_tasks.empty:
                 for _, task in urgent_tasks.head(5).iterrows():
                     col_a, col_b = st.columns([4, 1])
