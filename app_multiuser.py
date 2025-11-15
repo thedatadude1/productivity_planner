@@ -847,26 +847,46 @@ def show_admin_panel(user_id):
                     user_to_delete = users[users['username'] == username_to_delete].iloc[0]
                     delete_user_id = user_to_delete['id']
 
-                    # Delete user and all related data
-                    cursor = conn.cursor()
-                    try:
-                        cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                        cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                        cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                        cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                        cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
-                        conn.commit()
-                        st.success(f"✅ User '{username_to_delete}' and all associated data have been deleted!")
-                        st.rerun()
-                    except Exception as e:
-                        conn.rollback()
-                        st.error(f"❌ Error deleting user: {e}")
-                else:
-                    st.error("Please type 'DELETE' to confirm")
+                    # Prevent self-deletion
+                    if delete_user_id == user_id:
+                        st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
+                    else:
+                        # Close the current connection and create a new one for deletion
+                        conn.close()
+                        delete_conn = db.get_connection()
+                        cursor = delete_conn.cursor()
+
+                        try:
+                            # Delete in correct order to avoid foreign key constraints
+                            cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                            cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                            cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                            cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                            cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                            delete_conn.commit()
+                            delete_conn.close()
+                            st.success(f"✅ User '{username_to_delete}' and all associated data have been deleted!")
+                            st.balloons()
+                            st.info("Refreshing page in 2 seconds...")
+                            import time
+                            time.sleep(2)
+                            st.rerun()
+                        except Exception as e:
+                            delete_conn.rollback()
+                            delete_conn.close()
+                            st.error(f"❌ Error deleting user: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                elif confirm_text != "":
+                    st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
     else:
         st.info("No users registered yet!")
 
-    conn.close()
+    # Close connection if it's still open
+    try:
+        conn.close()
+    except:
+        pass
 
     # Database info
     st.markdown("---")
