@@ -511,7 +511,8 @@ def main():
         "📅 Calendar View",
         "📝 Daily Journal",
         "🏆 Achievements",
-        "📈 Analytics"
+        "📈 Analytics",
+        "👥 Admin Panel"
     ])
 
     if page == "📊 Dashboard":
@@ -528,6 +529,8 @@ def main():
         show_achievements_page(user_id)
     elif page == "📈 Analytics":
         show_analytics(user_id)
+    elif page == "👥 Admin Panel":
+        show_admin_panel(user_id)
 
 # All the show_* functions remain the same but now accept user_id parameter
 # I'll include the key ones here:
@@ -736,6 +739,140 @@ def show_analytics(user_id):
         st.info("💪 Great progress! Keep it up!")
     else:
         st.info("🚀 Every journey starts with a single step!")
+
+def show_admin_panel(user_id):
+    st.header("👥 Admin Panel - User Management")
+
+    st.info("📊 View all registered users and database statistics")
+
+    conn = db.get_connection()
+
+    # Get all users
+    users = pd.read_sql_query("""
+        SELECT id, username, email, created_at
+        FROM users
+        ORDER BY created_at DESC
+    """, conn)
+
+    # Display user count
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Users", len(users))
+    with col2:
+        total_tasks = pd.read_sql_query("SELECT COUNT(*) as count FROM tasks", conn).iloc[0]['count']
+        st.metric("Total Tasks", total_tasks)
+    with col3:
+        total_goals = pd.read_sql_query("SELECT COUNT(*) as count FROM goals", conn).iloc[0]['count']
+        st.metric("Total Goals", total_goals)
+
+    st.markdown("---")
+
+    # Display users table
+    st.subheader("📋 Registered Users")
+
+    if not users.empty:
+        # Format the dataframe for display
+        display_df = users.copy()
+        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "id": "User ID",
+                "username": "Username",
+                "email": "Email",
+                "created_at": "Registered On"
+            }
+        )
+
+        st.markdown("---")
+
+        # User statistics
+        st.subheader("📊 User Activity Statistics")
+
+        user_stats = pd.read_sql_query("""
+            SELECT
+                u.username,
+                COUNT(DISTINCT t.id) as total_tasks,
+                COUNT(DISTINCT CASE WHEN t.status = 'completed' THEN t.id END) as completed_tasks,
+                COUNT(DISTINCT g.id) as total_goals,
+                COUNT(DISTINCT de.id) as journal_entries
+            FROM users u
+            LEFT JOIN tasks t ON u.id = t.user_id
+            LEFT JOIN goals g ON u.id = g.user_id
+            LEFT JOIN daily_entries de ON u.id = de.user_id
+            GROUP BY u.id, u.username
+            ORDER BY total_tasks DESC
+        """, conn)
+
+        if not user_stats.empty:
+            st.dataframe(
+                user_stats,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "username": "Username",
+                    "total_tasks": "Total Tasks",
+                    "completed_tasks": "Completed Tasks",
+                    "total_goals": "Goals",
+                    "journal_entries": "Journal Entries"
+                }
+            )
+
+        st.markdown("---")
+
+        # Delete user section
+        st.subheader("⚠️ Delete User")
+        st.warning("Deleting a user will permanently remove all their data (tasks, goals, journal entries, achievements)")
+
+        with st.form("delete_user_form"):
+            username_to_delete = st.selectbox(
+                "Select user to delete",
+                options=users['username'].tolist(),
+                key="delete_user_select"
+            )
+
+            confirm_text = st.text_input(
+                "Type 'DELETE' to confirm",
+                key="delete_confirm"
+            )
+
+            submitted = st.form_submit_button("🗑️ Delete User", type="primary")
+
+            if submitted:
+                if confirm_text == "DELETE":
+                    # Get user_id
+                    user_to_delete = users[users['username'] == username_to_delete].iloc[0]
+                    delete_user_id = user_to_delete['id']
+
+                    # Delete user and all related data
+                    cursor = conn.cursor()
+                    try:
+                        cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                        cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                        cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                        cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                        cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                        conn.commit()
+                        st.success(f"✅ User '{username_to_delete}' and all associated data have been deleted!")
+                        st.rerun()
+                    except Exception as e:
+                        conn.rollback()
+                        st.error(f"❌ Error deleting user: {e}")
+                else:
+                    st.error("Please type 'DELETE' to confirm")
+    else:
+        st.info("No users registered yet!")
+
+    conn.close()
+
+    # Database info
+    st.markdown("---")
+    st.subheader("💾 Database Information")
+    st.caption("Database: productivity_planner_multiuser.db")
+    st.caption("⚠️ Note: Passwords are securely hashed with Argon2 and cannot be viewed")
 
 if __name__ == "__main__":
     main()
