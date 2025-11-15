@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 from typing import List, Dict, Optional
 import random
 import json
-import hashlib
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
 # Page configuration
 st.set_page_config(
@@ -151,15 +152,17 @@ class DatabaseManager:
 # Initialize database
 db = DatabaseManager()
 
-# Authentication Functions
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# Initialize Argon2 password hasher
+ph = PasswordHasher()
 
+# Authentication Functions
 def register_user(username, password, email=""):
+    """Register a new user with Argon2 password hashing"""
     conn = db.get_connection()
     cursor = conn.cursor()
     try:
-        password_hash = hash_password(password)
+        # Hash password using Argon2
+        password_hash = ph.hash(password)
         cursor.execute("""
             INSERT INTO users (username, password_hash, email)
             VALUES (?, ?, ?)
@@ -172,16 +175,24 @@ def register_user(username, password, email=""):
         return False
 
 def login_user(username, password):
+    """Login user with Argon2 password verification"""
     conn = db.get_connection()
-    password_hash = hash_password(password)
+
+    # Get user by username
     user = pd.read_sql_query("""
-        SELECT id, username FROM users
-        WHERE username = ? AND password_hash = ?
-    """, conn, params=(username, password_hash))
+        SELECT id, username, password_hash FROM users
+        WHERE username = ?
+    """, conn, params=(username,))
     conn.close()
 
     if not user.empty:
-        return user.iloc[0]['id'], user.iloc[0]['username']
+        try:
+            # Verify password using Argon2
+            ph.verify(user.iloc[0]['password_hash'], password)
+            return user.iloc[0]['id'], user.iloc[0]['username']
+        except VerifyMismatchError:
+            # Wrong password
+            return None, None
     return None, None
 
 # Motivational quotes
