@@ -600,29 +600,213 @@ def main():
 
 def show_dashboard(user_id):
     st.header("📊 Your Productivity Dashboard")
-    stats = get_productivity_stats(user_id)
 
+    # Get data
+    stats = get_productivity_stats(user_id)
+    conn = db.get_connection()
+
+    # KPI Metrics Row
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total Tasks", stats['total_tasks'])
-        st.metric("Completed", stats['completed_tasks'])
+        st.metric("Total Tasks", stats['total_tasks'], delta=f"+{stats['week_completed']} this week")
     with col2:
-        st.metric("This Week", stats['week_completed'])
-        st.metric("Completion Rate", f"{stats['completion_rate']:.1f}%")
+        st.metric("Completed", stats['completed_tasks'], delta=f"{stats['completion_rate']:.0f}% rate")
     with col3:
-        st.metric("Current Streak", f"{stats['streak']} days")
-        st.metric("Active Goals", stats['active_goals'])
+        st.metric("Current Streak", f"{stats['streak']} days", delta="🔥" if stats['streak'] > 0 else None)
     with col4:
-        next_milestone = next((m for m in [5, 25, 50, 100] if m > stats['completed_tasks']), 100)
+        next_milestone = next((m for m in [5, 10, 25, 50, 100, 250, 500] if m > stats['completed_tasks']), 1000)
         remaining = next_milestone - stats['completed_tasks']
-        st.metric("Next Milestone", f"{next_milestone} tasks")
-        st.metric("Tasks to Go", remaining)
+        st.metric("Next Milestone", f"{next_milestone} tasks", delta=f"{remaining} to go")
 
     st.markdown("---")
+
+    # Charts Row 1: Quick Overview Charts
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.subheader("📈 Task Progress")
+
+        # Donut chart for task completion
+        completion_data = pd.DataFrame({
+            'Status': ['Completed', 'Remaining'],
+            'Count': [stats['completed_tasks'], stats['total_tasks'] - stats['completed_tasks']]
+        })
+
+        fig_completion = px.pie(
+            completion_data,
+            values='Count',
+            names='Status',
+            hole=0.6,
+            color_discrete_map={'Completed': '#2ecc71', 'Remaining': '#e0e0e0'}
+        )
+
+        fig_completion.update_traces(textposition='inside', textinfo='percent+label')
+        fig_completion.update_layout(
+            height=250,
+            showlegend=False,
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
+
+        st.plotly_chart(fig_completion, use_container_width=True)
+        st.caption(f"**{stats['completion_rate']:.1f}%** Overall Completion Rate")
+
+    with col2:
+        st.subheader("⏰ This Week")
+
+        # Get this week's daily completions
+        week_ago = datetime.now() - timedelta(days=7)
+        weekly_tasks = pd.read_sql_query("""
+            SELECT DATE(completed_at) as date, COUNT(*) as count
+            FROM tasks
+            WHERE user_id = ? AND status = 'completed' AND completed_at >= ?
+            GROUP BY DATE(completed_at)
+            ORDER BY date
+        """, conn, params=(user_id, week_ago.strftime("%Y-%m-%d")))
+
+        if not weekly_tasks.empty:
+            fig_week = px.bar(
+                weekly_tasks,
+                x='date',
+                y='count',
+                color='count',
+                color_continuous_scale='Blues'
+            )
+
+            fig_week.update_layout(
+                height=250,
+                showlegend=False,
+                xaxis_title="",
+                yaxis_title="Tasks",
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            st.plotly_chart(fig_week, use_container_width=True)
+            st.caption(f"**{stats['week_completed']}** tasks completed this week")
+        else:
+            st.info("Complete tasks to see weekly progress!")
+
+    with col3:
+        st.subheader("🎯 Goals Progress")
+
+        goals = get_goals(user_id)
+        if not goals.empty:
+            # Calculate average goal progress
+            avg_progress = goals['progress'].mean()
+
+            fig_goals = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=avg_progress,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {'range': [None, 100]},
+                    'bar': {'color': "#3498db"},
+                    'steps': [
+                        {'range': [0, 33], 'color': "#ffe6e6"},
+                        {'range': [33, 66], 'color': "#fff4e6"},
+                        {'range': [66, 100], 'color': "#e6ffe6"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 90
+                    }
+                }
+            ))
+
+            fig_goals.update_layout(
+                height=250,
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            st.plotly_chart(fig_goals, use_container_width=True)
+            st.caption(f"**{avg_progress:.1f}%** Average Goal Progress")
+        else:
+            st.info("Set goals to track progress!")
+
+    st.markdown("---")
+
+    # Charts Row 2: Priority & Category Overview
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("🎨 Tasks by Category")
+
+        category_data = pd.read_sql_query("""
+            SELECT category, COUNT(*) as count
+            FROM tasks
+            WHERE user_id = ? AND status != 'completed'
+            GROUP BY category
+            ORDER BY count DESC
+        """, conn, params=(user_id,))
+
+        if not category_data.empty:
+            fig_category = px.bar(
+                category_data,
+                x='count',
+                y='category',
+                orientation='h',
+                color='count',
+                color_continuous_scale='Viridis',
+                text='count'
+            )
+
+            fig_category.update_traces(textposition='outside')
+            fig_category.update_layout(
+                height=300,
+                showlegend=False,
+                xaxis_title="Active Tasks",
+                yaxis_title="",
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            st.plotly_chart(fig_category, use_container_width=True)
+        else:
+            st.info("Add tasks to see category breakdown!")
+
+    with col2:
+        st.subheader("🚦 Priority Distribution")
+
+        priority_data = pd.read_sql_query("""
+            SELECT priority, COUNT(*) as count
+            FROM tasks
+            WHERE user_id = ? AND status != 'completed'
+            GROUP BY priority
+        """, conn, params=(user_id,))
+
+        if not priority_data.empty:
+            priority_colors = {'high': '#e74c3c', 'medium': '#f39c12', 'low': '#2ecc71'}
+
+            fig_priority = px.pie(
+                priority_data,
+                values='count',
+                names='priority',
+                color='priority',
+                color_discrete_map=priority_colors,
+                hole=0.4
+            )
+
+            fig_priority.update_traces(textposition='inside', textinfo='percent+label')
+            fig_priority.update_layout(
+                height=300,
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            st.plotly_chart(fig_priority, use_container_width=True)
+
+            # Priority alert
+            high_priority_count = priority_data[priority_data['priority'] == 'high']['count'].sum() if 'high' in priority_data['priority'].values else 0
+            if high_priority_count > 0:
+                st.warning(f"⚠️ {high_priority_count} high-priority tasks need attention!")
+        else:
+            st.info("Add tasks to see priority breakdown!")
+
+    st.markdown("---")
+
+    # Tasks and Goals Section
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader("📋 Today's Tasks")
+        st.subheader("📋 Today's Urgent Tasks")
         today_tasks = get_tasks(user_id, status='pending')
         if not today_tasks.empty:
             today_tasks['due_date'] = pd.to_datetime(today_tasks['due_date'])
@@ -652,6 +836,8 @@ def show_dashboard(user_id):
                 st.caption(f"{goal['progress']}% complete")
         else:
             st.info("No active goals. Set some in the Goals section!")
+
+    conn.close()
 
 def show_tasks(user_id):
     st.header("✅ Task Management")
