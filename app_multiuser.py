@@ -909,49 +909,70 @@ def show_admin_panel(user_id):
 
             submitted = st.form_submit_button("🗑️ Delete User", type="primary")
 
-            if submitted:
-                if confirm_text == "DELETE":
-                    # Get user_id
-                    user_to_delete = users[users['username'] == username_to_delete].iloc[0]
-                    delete_user_id = user_to_delete['id']
+        # Process deletion outside the form to avoid Streamlit form rerun issues
+        if submitted:
+            if confirm_text == "DELETE":
+                # Get user_id
+                user_to_delete = users[users['username'] == username_to_delete].iloc[0]
+                delete_user_id = user_to_delete['id']
 
-                    # Prevent self-deletion
-                    if delete_user_id == user_id:
-                        st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
-                    else:
+                # Prevent self-deletion
+                if delete_user_id == user_id:
+                    st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
+                else:
+                    try:
+                        # Close the existing connection first
                         try:
-                            # Create a fresh connection for deletion
-                            delete_conn = sqlite3.connect(db.db_name)
-                            delete_conn.execute("PRAGMA foreign_keys = OFF")
-                            cursor = delete_conn.cursor()
+                            conn.close()
+                        except:
+                            pass
 
-                            # Delete in correct order to avoid foreign key constraints
-                            cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                            cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                            cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                            cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                            cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                        # Create a fresh connection for deletion
+                        delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
+                        cursor = delete_conn.cursor()
 
-                            delete_conn.commit()
-                            delete_conn.close()
+                        # Disable foreign keys
+                        cursor.execute("PRAGMA foreign_keys = OFF")
 
-                            st.success(f"✅ User '{username_to_delete}' and all associated data have been deleted!")
+                        # Delete in correct order to avoid foreign key constraints
+                        cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                        achievements_deleted = cursor.rowcount
+
+                        cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                        entries_deleted = cursor.rowcount
+
+                        cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                        goals_deleted = cursor.rowcount
+
+                        cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                        tasks_deleted = cursor.rowcount
+
+                        cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                        user_deleted = cursor.rowcount
+
+                        delete_conn.close()
+
+                        if user_deleted > 0:
+                            st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
+                            st.info(f"Deleted: {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} journal entries, {achievements_deleted} achievements")
                             st.balloons()
-                            st.info("Refreshing page...")
+                            st.info("Refreshing page in 2 seconds...")
                             import time
-                            time.sleep(1)
+                            time.sleep(2)
                             st.rerun()
-                        except Exception as e:
-                            try:
-                                delete_conn.rollback()
-                                delete_conn.close()
-                            except:
-                                pass
-                            st.error(f"❌ Error deleting user: {str(e)}")
-                            import traceback
-                            st.code(traceback.format_exc())
-                elif confirm_text != "":
-                    st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
+                        else:
+                            st.error("❌ User deletion failed - user may not exist")
+
+                    except Exception as e:
+                        try:
+                            delete_conn.close()
+                        except:
+                            pass
+                        st.error(f"❌ Error deleting user: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+            elif confirm_text != "":
+                st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
     else:
         st.info("No users registered yet!")
 
