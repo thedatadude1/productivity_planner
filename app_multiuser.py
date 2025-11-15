@@ -1107,8 +1107,9 @@ def show_analytics(user_id):
         with col1:
             st.subheader("😊 Mood Trends Over Time")
 
-            # Filter out entries with mood data
+            # Filter out entries with mood data and validate mood range (1-5)
             mood_data = journal_entries[journal_entries['mood'].notna()].copy()
+            mood_data = mood_data[(mood_data['mood'] >= 1) & (mood_data['mood'] <= 5)]
 
             if not mood_data.empty:
                 fig_mood = px.line(
@@ -1199,8 +1200,10 @@ def show_analytics(user_id):
                 # Most common mood
                 most_common_mood = mood_data['mood'].mode()
                 if not most_common_mood.empty:
-                    mood_emoji = mood_labels[most_common_mood[0]]
-                    st.info(f"🎭 Your most common mood: **{mood_emoji}**")
+                    mood_value = int(most_common_mood[0])
+                    if mood_value in mood_labels:
+                        mood_emoji = mood_labels[mood_value]
+                        st.info(f"🎭 Your most common mood: **{mood_emoji}**")
 
             else:
                 st.info("Add mood ratings to see your mood distribution!")
