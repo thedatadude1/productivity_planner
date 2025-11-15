@@ -149,6 +149,18 @@ class DatabaseManager:
             )
         """)
 
+        # Migrate existing databases: add is_admin column if it doesn't exist
+        try:
+            cursor.execute("SELECT is_admin FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+            # Create admin account if username 'thedatadude' exists
+            cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
+            admin_user = cursor.fetchone()
+            if admin_user:
+                cursor.execute("UPDATE users SET is_admin = 1 WHERE username = 'thedatadude'")
+
         conn.commit()
         conn.close()
 
