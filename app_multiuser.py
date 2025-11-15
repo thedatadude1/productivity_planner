@@ -933,37 +933,48 @@ def show_admin_panel(user_id):
                         delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
                         delete_cursor = delete_conn.cursor()
 
-                        # Disable foreign keys
-                        delete_cursor.execute("PRAGMA foreign_keys = OFF")
+                        # First verify the user exists in the fresh connection
+                        delete_cursor.execute("SELECT id, username FROM users WHERE id = ?", (delete_user_id,))
+                        verify_user = delete_cursor.fetchone()
 
-                        # Delete in correct order to avoid foreign key constraints
-                        delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                        achievements_deleted = delete_cursor.rowcount
-
-                        delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                        entries_deleted = delete_cursor.rowcount
-
-                        delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                        goals_deleted = delete_cursor.rowcount
-
-                        delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                        tasks_deleted = delete_cursor.rowcount
-
-                        delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
-                        user_deleted = delete_cursor.rowcount
-
-                        delete_conn.close()
-
-                        if user_deleted > 0:
-                            st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
-                            st.info(f"Deleted: {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} journal entries, {achievements_deleted} achievements")
-                            st.balloons()
-                            st.info("Refreshing page in 2 seconds...")
-                            import time
-                            time.sleep(2)
-                            st.rerun()
+                        if not verify_user:
+                            delete_conn.close()
+                            st.error(f"❌ Debug: User ID {delete_user_id} not found in fresh connection! This suggests a database sync issue.")
+                            st.info("Try refreshing the page and checking the user list again.")
                         else:
-                            st.error(f"❌ User deletion failed - user ID {delete_user_id} may not exist. Deleted {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements.")
+                            st.info(f"🔍 Debug: Found user in DB - ID: {verify_user[0]}, Username: {verify_user[1]}")
+
+                            # Disable foreign keys
+                            delete_cursor.execute("PRAGMA foreign_keys = OFF")
+
+                            # Delete in correct order to avoid foreign key constraints
+                            delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                            achievements_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                            entries_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                            goals_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                            tasks_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                            user_deleted = delete_cursor.rowcount
+
+                            delete_conn.close()
+
+                            if user_deleted > 0:
+                                st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
+                                st.info(f"Deleted: {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} journal entries, {achievements_deleted} achievements")
+                                st.balloons()
+                                st.info("Refreshing page in 2 seconds...")
+                                import time
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ User deletion failed - user ID {delete_user_id} may not exist. Deleted {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements.")
 
                     except Exception as e:
                         try:
