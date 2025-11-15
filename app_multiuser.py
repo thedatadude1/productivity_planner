@@ -919,29 +919,34 @@ def show_admin_panel(user_id):
                     if delete_user_id == user_id:
                         st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
                     else:
-                        # Close the current connection and create a new one for deletion
-                        conn.close()
-                        delete_conn = db.get_connection()
-                        cursor = delete_conn.cursor()
-
                         try:
+                            # Create a fresh connection for deletion
+                            delete_conn = sqlite3.connect(db.db_name)
+                            delete_conn.execute("PRAGMA foreign_keys = OFF")
+                            cursor = delete_conn.cursor()
+
                             # Delete in correct order to avoid foreign key constraints
                             cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
                             cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
                             cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
                             cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
                             cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+
                             delete_conn.commit()
                             delete_conn.close()
+
                             st.success(f"✅ User '{username_to_delete}' and all associated data have been deleted!")
                             st.balloons()
-                            st.info("Refreshing page in 2 seconds...")
+                            st.info("Refreshing page...")
                             import time
-                            time.sleep(2)
+                            time.sleep(1)
                             st.rerun()
                         except Exception as e:
-                            delete_conn.rollback()
-                            delete_conn.close()
+                            try:
+                                delete_conn.rollback()
+                                delete_conn.close()
+                            except:
+                                pass
                             st.error(f"❌ Error deleting user: {str(e)}")
                             import traceback
                             st.code(traceback.format_exc())
