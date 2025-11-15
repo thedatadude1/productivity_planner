@@ -939,40 +939,52 @@ def show_admin_panel(user_id):
                                 pass
 
                             # Create a fresh connection for deletion
-                            delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
+                            delete_conn = sqlite3.connect(db.db_name)
                             delete_cursor = delete_conn.cursor()
 
-                            # Disable foreign keys
-                            delete_cursor.execute("PRAGMA foreign_keys = OFF")
+                            # Verify user exists right before deletion
+                            delete_cursor.execute("SELECT id, username FROM users WHERE id = ?", (delete_user_id,))
+                            final_check = delete_cursor.fetchone()
 
-                            # Delete in correct order to avoid foreign key constraints
-                            delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                            achievements_deleted = delete_cursor.rowcount
-
-                            delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                            entries_deleted = delete_cursor.rowcount
-
-                            delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                            goals_deleted = delete_cursor.rowcount
-
-                            delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                            tasks_deleted = delete_cursor.rowcount
-
-                            delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
-                            user_deleted = delete_cursor.rowcount
-
-                            delete_conn.close()
-
-                            if user_deleted > 0:
-                                st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
-                                st.info(f"Deleted: {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} journal entries, {achievements_deleted} achievements")
-                                st.balloons()
-                                st.info("Refreshing page in 2 seconds...")
-                                import time
-                                time.sleep(2)
-                                st.rerun()
+                            if not final_check:
+                                st.error(f"❌ User ID {delete_user_id} disappeared! The database might be read-only or there's a connection issue.")
+                                delete_conn.close()
                             else:
-                                st.error(f"❌ User deletion failed - user ID {delete_user_id} may not exist. Deleted {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements.")
+                                st.info(f"🔍 Confirmed: User exists - ID: {final_check[0]}, Username: {final_check[1]}")
+
+                                # Disable foreign keys
+                                delete_cursor.execute("PRAGMA foreign_keys = OFF")
+
+                                # Delete in correct order to avoid foreign key constraints
+                                delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                                achievements_deleted = delete_cursor.rowcount
+
+                                delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                                entries_deleted = delete_cursor.rowcount
+
+                                delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                                goals_deleted = delete_cursor.rowcount
+
+                                delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                                tasks_deleted = delete_cursor.rowcount
+
+                                delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                                user_deleted = delete_cursor.rowcount
+
+                                delete_conn.commit()
+                                delete_conn.close()
+
+                                st.info(f"📊 Deletion results: {user_deleted} user, {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements")
+
+                                if user_deleted > 0:
+                                    st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
+                                    st.balloons()
+                                    st.info("Refreshing page in 2 seconds...")
+                                    import time
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ DELETE statement executed but returned 0 rows. This might be a database locking or permission issue.")
 
                         except Exception as e:
                             try:
