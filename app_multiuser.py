@@ -895,22 +895,24 @@ def show_admin_panel(user_id):
         st.subheader("⚠️ Delete User")
         st.warning("Deleting a user will permanently remove all their data (tasks, goals, journal entries, achievements)")
 
-        with st.form("delete_user_form"):
+        # Use a simpler approach without forms
+        col1, col2 = st.columns(2)
+
+        with col1:
             username_to_delete = st.selectbox(
                 "Select user to delete",
                 options=users['username'].tolist(),
-                key="delete_user_select"
+                key="admin_delete_user_select"
             )
 
+        with col2:
             confirm_text = st.text_input(
                 "Type 'DELETE' to confirm",
-                key="delete_confirm"
+                key="admin_delete_confirm",
+                placeholder="DELETE"
             )
 
-            submitted = st.form_submit_button("🗑️ Delete User", type="primary")
-
-        # Process deletion outside the form to avoid Streamlit form rerun issues
-        if submitted:
+        if st.button("🗑️ Delete User", type="primary", key="admin_delete_button"):
             if confirm_text == "DELETE":
                 # Get user_id
                 user_to_delete = users[users['username'] == username_to_delete].iloc[0]
@@ -929,26 +931,26 @@ def show_admin_panel(user_id):
 
                         # Create a fresh connection for deletion
                         delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
-                        cursor = delete_conn.cursor()
+                        delete_cursor = delete_conn.cursor()
 
                         # Disable foreign keys
-                        cursor.execute("PRAGMA foreign_keys = OFF")
+                        delete_cursor.execute("PRAGMA foreign_keys = OFF")
 
                         # Delete in correct order to avoid foreign key constraints
-                        cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                        achievements_deleted = cursor.rowcount
+                        delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                        achievements_deleted = delete_cursor.rowcount
 
-                        cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                        entries_deleted = cursor.rowcount
+                        delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                        entries_deleted = delete_cursor.rowcount
 
-                        cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                        goals_deleted = cursor.rowcount
+                        delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                        goals_deleted = delete_cursor.rowcount
 
-                        cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                        tasks_deleted = cursor.rowcount
+                        delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                        tasks_deleted = delete_cursor.rowcount
 
-                        cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
-                        user_deleted = cursor.rowcount
+                        delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                        user_deleted = delete_cursor.rowcount
 
                         delete_conn.close()
 
@@ -961,7 +963,7 @@ def show_admin_panel(user_id):
                             time.sleep(2)
                             st.rerun()
                         else:
-                            st.error("❌ User deletion failed - user may not exist")
+                            st.error(f"❌ User deletion failed - user ID {delete_user_id} may not exist. Deleted {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements.")
 
                     except Exception as e:
                         try:
@@ -973,6 +975,8 @@ def show_admin_panel(user_id):
                         st.code(traceback.format_exc())
             elif confirm_text != "":
                 st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
+            else:
+                st.warning("⚠️ Please type 'DELETE' to confirm deletion")
     else:
         st.info("No users registered yet!")
 
