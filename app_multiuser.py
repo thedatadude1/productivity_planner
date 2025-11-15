@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from typing import List, Dict, Optional
 import random
 import json
+import hashlib
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
@@ -190,24 +191,59 @@ def register_user(username, password, email=""):
         return False
 
 def login_user(username, password):
-    """Login user with Argon2 password verification"""
+    """Login user with password verification (supports both Argon2 and legacy SHA-256)"""
     conn = db.get_connection()
+    cursor = conn.cursor()
 
     # Get user by username
     user = pd.read_sql_query("""
         SELECT id, username, password_hash, is_admin FROM users
         WHERE username = ?
     """, conn, params=(username,))
-    conn.close()
 
     if not user.empty:
+        user_id = user.iloc[0]['id']
+        stored_hash = user.iloc[0]['password_hash']
+        is_admin = bool(user.iloc[0]['is_admin'])
+
+        # Try Argon2 verification first (new format)
         try:
-            # Verify password using Argon2
-            ph.verify(user.iloc[0]['password_hash'], password)
-            return user.iloc[0]['id'], user.iloc[0]['username'], bool(user.iloc[0]['is_admin'])
+            ph.verify(stored_hash, password)
+            conn.close()
+            return user_id, username, is_admin
         except VerifyMismatchError:
-            # Wrong password
-            return None, None, False
+            # If Argon2 fails, try SHA-256 (legacy format)
+            sha256_hash = hashlib.sha256(password.encode()).hexdigest()
+            if stored_hash == sha256_hash:
+                # Password is correct but using old hash format
+                # Upgrade to Argon2 automatically
+                new_hash = ph.hash(password)
+                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                             (new_hash, user_id))
+                conn.commit()
+                conn.close()
+                return user_id, username, is_admin
+            else:
+                # Wrong password with both methods
+                conn.close()
+                return None, None, False
+        except Exception:
+            # If Argon2 verification throws any other error, try SHA-256
+            sha256_hash = hashlib.sha256(password.encode()).hexdigest()
+            if stored_hash == sha256_hash:
+                # Password is correct but using old hash format
+                # Upgrade to Argon2 automatically
+                new_hash = ph.hash(password)
+                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                             (new_hash, user_id))
+                conn.commit()
+                conn.close()
+                return user_id, username, is_admin
+            else:
+                conn.close()
+                return None, None, False
+
+    conn.close()
     return None, None, False
 
 # Motivational quotes
