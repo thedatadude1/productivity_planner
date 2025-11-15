@@ -785,23 +785,309 @@ def show_achievements_page(user_id):
         st.info("Complete tasks to earn achievements!")
 
 def show_analytics(user_id):
-    st.header("📈 Productivity Analytics")
+    st.header("📈 Productivity Analytics & Insights")
+
+    # Get all data
     stats = get_productivity_stats(user_id)
+    conn = db.get_connection()
 
-    col1, col2, col3 = st.columns(3)
+    # Top metrics row
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Average Daily Completion", f"{stats['week_completed'] / 7:.1f}")
+        st.metric("Total Tasks", stats['total_tasks'],
+                 delta=f"+{stats['week_completed']} this week")
     with col2:
-        st.metric("Task Completion Rate", f"{stats['completion_rate']:.1f}%")
+        st.metric("Completion Rate", f"{stats['completion_rate']:.1f}%",
+                 delta="Outstanding!" if stats['completion_rate'] >= 80 else "Keep going!")
     with col3:
-        st.metric("Current Streak", f"{stats['streak']} days")
+        st.metric("Tasks This Week", stats['week_completed'])
+    with col4:
+        st.metric("Current Streak", f"{stats['streak']} days",
+                 delta="🔥" if stats['streak'] > 0 else None)
 
-    if stats['completion_rate'] >= 80:
-        st.success("🌟 Outstanding! You're crushing your goals!")
-    elif stats['completion_rate'] >= 60:
-        st.info("💪 Great progress! Keep it up!")
+    st.markdown("---")
+
+    # Get task data for charts
+    all_tasks = pd.read_sql_query("""
+        SELECT title, category, priority, status, due_date, completed_at, created_at, estimated_hours
+        FROM tasks
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    """, conn, params=(user_id,))
+
+    if not all_tasks.empty:
+        # Convert dates
+        all_tasks['due_date'] = pd.to_datetime(all_tasks['due_date'])
+        all_tasks['completed_at'] = pd.to_datetime(all_tasks['completed_at'])
+        all_tasks['created_at'] = pd.to_datetime(all_tasks['created_at'])
+
+        # Row 1: Task Distribution Charts
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("📊 Tasks by Category")
+            category_counts = all_tasks['category'].value_counts().reset_index()
+            category_counts.columns = ['category', 'count']
+
+            fig_category = px.pie(
+                category_counts,
+                values='count',
+                names='category',
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig_category.update_traces(textposition='inside', textinfo='percent+label')
+            fig_category.update_layout(height=350, showlegend=True)
+            st.plotly_chart(fig_category, use_container_width=True)
+
+        with col2:
+            st.subheader("🎯 Tasks by Priority")
+            priority_counts = all_tasks['priority'].value_counts().reset_index()
+            priority_counts.columns = ['priority', 'count']
+
+            # Define colors for priorities
+            priority_colors = {'high': '#FF6B6B', 'medium': '#FFD93D', 'low': '#6BCB77'}
+
+            fig_priority = px.bar(
+                priority_counts,
+                x='priority',
+                y='count',
+                color='priority',
+                color_discrete_map=priority_colors,
+                text='count'
+            )
+            fig_priority.update_traces(textposition='outside')
+            fig_priority.update_layout(
+                height=350,
+                showlegend=False,
+                xaxis_title="Priority Level",
+                yaxis_title="Number of Tasks"
+            )
+            st.plotly_chart(fig_priority, use_container_width=True)
+
+        st.markdown("---")
+
+        # Row 2: Completion Status and Timeline
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("✅ Completion Status")
+            status_counts = all_tasks['status'].value_counts().reset_index()
+            status_counts.columns = ['status', 'count']
+
+            status_colors = {'completed': '#4CAF50', 'pending': '#FFC107', 'in_progress': '#2196F3'}
+
+            fig_status = px.bar(
+                status_counts,
+                x='status',
+                y='count',
+                color='status',
+                color_discrete_map=status_colors,
+                text='count'
+            )
+            fig_status.update_traces(textposition='outside')
+            fig_status.update_layout(
+                height=350,
+                showlegend=False,
+                xaxis_title="Status",
+                yaxis_title="Number of Tasks"
+            )
+            st.plotly_chart(fig_status, use_container_width=True)
+
+        with col2:
+            st.subheader("📅 Completion Timeline")
+            completed_tasks = all_tasks[all_tasks['status'] == 'completed'].copy()
+
+            if not completed_tasks.empty:
+                completed_tasks['completion_date'] = completed_tasks['completed_at'].dt.date
+                daily_completions = completed_tasks.groupby('completion_date').size().reset_index()
+                daily_completions.columns = ['date', 'tasks_completed']
+
+                fig_timeline = px.line(
+                    daily_completions,
+                    x='date',
+                    y='tasks_completed',
+                    markers=True,
+                    line_shape='spline'
+                )
+                fig_timeline.update_traces(
+                    line_color='#667eea',
+                    marker=dict(size=8, color='#764ba2')
+                )
+                fig_timeline.update_layout(
+                    height=350,
+                    xaxis_title="Date",
+                    yaxis_title="Tasks Completed",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig_timeline, use_container_width=True)
+            else:
+                st.info("Complete some tasks to see your completion timeline!")
+
+        st.markdown("---")
+
+        # Row 3: Advanced Analytics
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("⏰ Estimated Hours by Category")
+            tasks_with_hours = all_tasks[all_tasks['estimated_hours'].notna()].copy()
+
+            if not tasks_with_hours.empty:
+                hours_by_category = tasks_with_hours.groupby('category')['estimated_hours'].sum().reset_index()
+                hours_by_category.columns = ['category', 'total_hours']
+
+                fig_hours = px.bar(
+                    hours_by_category,
+                    x='category',
+                    y='total_hours',
+                    color='total_hours',
+                    color_continuous_scale='Viridis',
+                    text='total_hours'
+                )
+                fig_hours.update_traces(texttemplate='%{text:.1f}h', textposition='outside')
+                fig_hours.update_layout(
+                    height=350,
+                    xaxis_title="Category",
+                    yaxis_title="Total Hours",
+                    showlegend=False
+                )
+                st.plotly_chart(fig_hours, use_container_width=True)
+            else:
+                st.info("Add estimated hours to tasks to see time allocation!")
+
+        with col2:
+            st.subheader("📈 Weekly Productivity Trend")
+
+            # Get last 8 weeks of data
+            eight_weeks_ago = datetime.now() - timedelta(weeks=8)
+            recent_completed = all_tasks[
+                (all_tasks['status'] == 'completed') &
+                (all_tasks['completed_at'] >= eight_weeks_ago)
+            ].copy()
+
+            if not recent_completed.empty:
+                recent_completed['week'] = recent_completed['completed_at'].dt.to_period('W').astype(str)
+                weekly_counts = recent_completed.groupby('week').size().reset_index()
+                weekly_counts.columns = ['week', 'tasks_completed']
+
+                fig_weekly = px.area(
+                    weekly_counts,
+                    x='week',
+                    y='tasks_completed',
+                    line_shape='spline'
+                )
+                fig_weekly.update_traces(
+                    fill='tozeroy',
+                    line_color='#667eea',
+                    fillcolor='rgba(102, 126, 234, 0.3)'
+                )
+                fig_weekly.update_layout(
+                    height=350,
+                    xaxis_title="Week",
+                    yaxis_title="Tasks Completed",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig_weekly, use_container_width=True)
+            else:
+                st.info("Complete tasks over multiple weeks to see trends!")
+
+        st.markdown("---")
+
+        # Row 4: Heatmap of productivity
+        st.subheader("🔥 Productivity Heatmap (Last 30 Days)")
+
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_tasks = all_tasks[
+            (all_tasks['status'] == 'completed') &
+            (all_tasks['completed_at'] >= thirty_days_ago)
+        ].copy()
+
+        if not recent_tasks.empty:
+            recent_tasks['date'] = recent_tasks['completed_at'].dt.date
+            recent_tasks['weekday'] = recent_tasks['completed_at'].dt.day_name()
+            recent_tasks['week'] = recent_tasks['completed_at'].dt.isocalendar().week
+
+            heatmap_data = recent_tasks.groupby(['week', 'weekday']).size().reset_index()
+            heatmap_data.columns = ['week', 'weekday', 'count']
+
+            # Pivot for heatmap
+            heatmap_pivot = heatmap_data.pivot(index='weekday', columns='week', values='count').fillna(0)
+
+            # Reorder days
+            days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            heatmap_pivot = heatmap_pivot.reindex([d for d in days_order if d in heatmap_pivot.index])
+
+            fig_heatmap = px.imshow(
+                heatmap_pivot,
+                labels=dict(x="Week", y="Day of Week", color="Tasks Completed"),
+                color_continuous_scale='YlOrRd',
+                aspect='auto'
+            )
+            fig_heatmap.update_layout(height=300)
+            st.plotly_chart(fig_heatmap, use_container_width=True)
+        else:
+            st.info("Complete tasks over the next 30 days to see your productivity heatmap!")
+
+        # Performance insights
+        st.markdown("---")
+        st.subheader("💡 Insights & Recommendations")
+
+        insights_col1, insights_col2 = st.columns(2)
+
+        with insights_col1:
+            # Most productive category
+            if not all_tasks[all_tasks['status'] == 'completed'].empty:
+                top_category = all_tasks[all_tasks['status'] == 'completed']['category'].mode()
+                if not top_category.empty:
+                    st.success(f"🌟 Your most productive category: **{top_category[0]}**")
+
+                # Completion speed
+                completed_with_dates = all_tasks[
+                    (all_tasks['status'] == 'completed') &
+                    (all_tasks['completed_at'].notna()) &
+                    (all_tasks['created_at'].notna())
+                ].copy()
+
+                if not completed_with_dates.empty:
+                    completed_with_dates['completion_time'] = (
+                        completed_with_dates['completed_at'] - completed_with_dates['created_at']
+                    ).dt.total_seconds() / 3600 / 24  # Convert to days
+
+                    avg_completion_days = completed_with_dates['completion_time'].mean()
+                    st.info(f"⏱️ Average task completion time: **{avg_completion_days:.1f} days**")
+
+        with insights_col2:
+            # Priority distribution insight
+            high_priority_count = len(all_tasks[all_tasks['priority'] == 'high'])
+            pending_high_priority = len(all_tasks[(all_tasks['priority'] == 'high') & (all_tasks['status'] == 'pending')])
+
+            if pending_high_priority > 0:
+                st.warning(f"⚠️ You have **{pending_high_priority}** pending high-priority tasks!")
+
+            # Overdue tasks
+            overdue = all_tasks[
+                (all_tasks['status'] != 'completed') &
+                (all_tasks['due_date'] < pd.Timestamp(datetime.now().date()))
+            ]
+
+            if not overdue.empty:
+                st.error(f"🚨 You have **{len(overdue)}** overdue tasks!")
+            else:
+                st.success("✅ No overdue tasks - you're on track!")
+
     else:
-        st.info("🚀 Every journey starts with a single step!")
+        st.info("📊 Start adding tasks to see beautiful analytics and insights!")
+        st.markdown("""
+        Your analytics dashboard will show:
+        - 📊 Task distribution by category and priority
+        - ✅ Completion status overview
+        - 📈 Productivity trends over time
+        - 🔥 Heatmap of your most productive days
+        - 💡 Personalized insights and recommendations
+        """)
+
+    conn.close()
 
 def show_admin_panel(user_id):
     st.header("👥 Admin Panel - User Management")
