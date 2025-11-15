@@ -58,6 +58,8 @@ if 'username' not in st.session_state:
     st.session_state.username = None
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
+if 'is_admin' not in st.session_state:
+    st.session_state.is_admin = False
 
 # Database initialization
 class DatabaseManager:
@@ -79,6 +81,7 @@ class DatabaseManager:
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 email TEXT,
+                is_admin INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -180,7 +183,7 @@ def login_user(username, password):
 
     # Get user by username
     user = pd.read_sql_query("""
-        SELECT id, username, password_hash FROM users
+        SELECT id, username, password_hash, is_admin FROM users
         WHERE username = ?
     """, conn, params=(username,))
     conn.close()
@@ -189,11 +192,11 @@ def login_user(username, password):
         try:
             # Verify password using Argon2
             ph.verify(user.iloc[0]['password_hash'], password)
-            return user.iloc[0]['id'], user.iloc[0]['username']
+            return user.iloc[0]['id'], user.iloc[0]['username'], bool(user.iloc[0]['is_admin'])
         except VerifyMismatchError:
             # Wrong password
-            return None, None
-    return None, None
+            return None, None, False
+    return None, None, False
 
 # Motivational quotes
 MOTIVATIONAL_QUOTES = [
@@ -451,11 +454,12 @@ def show_auth_page():
             submit = st.form_submit_button("Login")
 
             if submit:
-                user_id, username_result = login_user(username, password)
+                user_id, username_result, is_admin = login_user(username, password)
                 if user_id:
                     st.session_state.logged_in = True
                     st.session_state.username = username_result
                     st.session_state.user_id = user_id
+                    st.session_state.is_admin = is_admin
                     st.success("Login successful!")
                     st.rerun()
                 else:
@@ -496,24 +500,34 @@ def main():
 
     # Sidebar with logout
     st.sidebar.title(f"Welcome, {st.session_state.username}!")
+    if st.session_state.is_admin:
+        st.sidebar.caption("🔑 Admin")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = None
         st.session_state.user_id = None
+        st.session_state.is_admin = False
         st.rerun()
 
     st.sidebar.markdown("---")
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", [
+
+    # Build navigation menu based on admin status
+    nav_options = [
         "📊 Dashboard",
         "✅ Tasks",
         "🎯 Goals",
         "📅 Calendar View",
         "📝 Daily Journal",
         "🏆 Achievements",
-        "📈 Analytics",
-        "👥 Admin Panel"
-    ])
+        "📈 Analytics"
+    ]
+
+    # Only show Admin Panel to admins
+    if st.session_state.is_admin:
+        nav_options.append("👥 Admin Panel")
+
+    page = st.sidebar.radio("Go to", nav_options)
 
     if page == "📊 Dashboard":
         show_dashboard(user_id)
@@ -742,6 +756,12 @@ def show_analytics(user_id):
 
 def show_admin_panel(user_id):
     st.header("👥 Admin Panel - User Management")
+
+    # Check if user is admin
+    if not st.session_state.is_admin:
+        st.error("🚫 Access Denied: Admin privileges required")
+        st.warning("This page is only accessible to administrators.")
+        return
 
     st.info("📊 View all registered users and database statistics")
 
