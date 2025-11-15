@@ -914,35 +914,33 @@ def show_admin_panel(user_id):
 
         if st.button("🗑️ Delete User", type="primary", key="admin_delete_button"):
             if confirm_text == "DELETE":
-                # Get user_id
-                user_to_delete = users[users['username'] == username_to_delete].iloc[0]
-                delete_user_id = user_to_delete['id']
+                # Re-query the database to get the current user ID (avoid stale data)
+                fresh_conn = db.get_connection()
+                current_users = pd.read_sql_query("""
+                    SELECT id, username FROM users WHERE username = ?
+                """, fresh_conn, params=(username_to_delete,))
+                fresh_conn.close()
 
-                # Prevent self-deletion
-                if delete_user_id == user_id:
-                    st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
+                if current_users.empty:
+                    st.error(f"❌ User '{username_to_delete}' not found in database. They may have already been deleted.")
+                    st.info("Please refresh the page to see the current user list.")
                 else:
-                    try:
-                        # Close the existing connection first
+                    delete_user_id = current_users.iloc[0]['id']
+
+                    # Prevent self-deletion
+                    if delete_user_id == user_id:
+                        st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
+                    else:
                         try:
-                            conn.close()
-                        except:
-                            pass
+                            # Close the existing connection first
+                            try:
+                                conn.close()
+                            except:
+                                pass
 
-                        # Create a fresh connection for deletion
-                        delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
-                        delete_cursor = delete_conn.cursor()
-
-                        # First verify the user exists in the fresh connection
-                        delete_cursor.execute("SELECT id, username FROM users WHERE id = ?", (delete_user_id,))
-                        verify_user = delete_cursor.fetchone()
-
-                        if not verify_user:
-                            delete_conn.close()
-                            st.error(f"❌ Debug: User ID {delete_user_id} not found in fresh connection! This suggests a database sync issue.")
-                            st.info("Try refreshing the page and checking the user list again.")
-                        else:
-                            st.info(f"🔍 Debug: Found user in DB - ID: {verify_user[0]}, Username: {verify_user[1]}")
+                            # Create a fresh connection for deletion
+                            delete_conn = sqlite3.connect(db.db_name, isolation_level=None)
+                            delete_cursor = delete_conn.cursor()
 
                             # Disable foreign keys
                             delete_cursor.execute("PRAGMA foreign_keys = OFF")
@@ -976,14 +974,14 @@ def show_admin_panel(user_id):
                             else:
                                 st.error(f"❌ User deletion failed - user ID {delete_user_id} may not exist. Deleted {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements.")
 
-                    except Exception as e:
-                        try:
-                            delete_conn.close()
-                        except:
-                            pass
-                        st.error(f"❌ Error deleting user: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
+                        except Exception as e:
+                            try:
+                                delete_conn.close()
+                            except:
+                                pass
+                            st.error(f"❌ Error deleting user: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
             elif confirm_text != "":
                 st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
             else:
