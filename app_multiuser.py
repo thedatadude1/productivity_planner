@@ -758,21 +758,130 @@ def show_calendar(user_id):
 
 def show_daily_journal(user_id):
     st.header("📝 Daily Journal & Reflection")
-    entry_date = st.date_input("Select Date", value=datetime.now())
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        entry_date = st.date_input("📅 Select Date", value=datetime.now())
+
+    with col2:
+        st.markdown("### Quick Stats")
+        conn = db.get_connection()
+        total_entries = pd.read_sql_query("""
+            SELECT COUNT(*) as count FROM daily_entries WHERE user_id = ?
+        """, conn, params=(user_id,)).iloc[0]['count']
+        conn.close()
+        st.metric("Journal Entries", total_entries)
+
     entry_date_str = entry_date.strftime("%Y-%m-%d")
     existing_entry = get_daily_entry(user_id, entry_date_str)
 
+    st.markdown("---")
+
     with st.form("daily_journal_form"):
-        mood = st.slider("Mood (1-10)", 1, 10, value=int(existing_entry.iloc[0]['mood']) if not existing_entry.empty else 7)
-        gratitude = st.text_area("🙏 Gratitude", value=existing_entry.iloc[0]['gratitude'] if not existing_entry.empty else "")
-        highlights = st.text_area("✨ Highlights", value=existing_entry.iloc[0]['highlights'] if not existing_entry.empty else "")
-        challenges = st.text_area("💪 Challenges", value=existing_entry.iloc[0]['challenges'] if not existing_entry.empty else "")
-        tomorrow_goals = st.text_area("🎯 Tomorrow's Goals", value=existing_entry.iloc[0]['tomorrow_goals'] if not existing_entry.empty else "")
-        submitted = st.form_submit_button("💾 Save Entry", use_container_width=True)
+        st.subheader("How are you feeling today?")
+
+        # Enhanced mood selector with emojis and descriptions
+        mood_options = {
+            1: "😢 Very Bad - Struggling today",
+            2: "😕 Bad - Not feeling great",
+            3: "😐 Neutral - Just okay",
+            4: "🙂 Good - Feeling positive",
+            5: "😊 Great - Feeling amazing!"
+        }
+
+        # Get existing mood or default to 3
+        existing_mood = int(existing_entry.iloc[0]['mood']) if not existing_entry.empty and existing_entry.iloc[0]['mood'] else 3
+        # Ensure existing mood is in valid range
+        if existing_mood < 1 or existing_mood > 5:
+            existing_mood = 3
+
+        # Create radio buttons for mood selection
+        mood_selection = st.radio(
+            "Rate your mood:",
+            options=list(mood_options.keys()),
+            format_func=lambda x: mood_options[x],
+            index=existing_mood - 1,
+            horizontal=True
+        )
+
+        st.markdown("---")
+
+        # Journal sections in columns
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### 🙏 Gratitude")
+            st.caption("What are you thankful for today?")
+            gratitude = st.text_area(
+                "Gratitude",
+                value=existing_entry.iloc[0]['gratitude'] if not existing_entry.empty else "",
+                height=120,
+                placeholder="I'm grateful for...",
+                label_visibility="collapsed"
+            )
+
+            st.markdown("### ✨ Highlights")
+            st.caption("What went well today?")
+            highlights = st.text_area(
+                "Highlights",
+                value=existing_entry.iloc[0]['highlights'] if not existing_entry.empty else "",
+                height=120,
+                placeholder="Today's wins and positive moments...",
+                label_visibility="collapsed"
+            )
+
+        with col2:
+            st.markdown("### 💪 Challenges")
+            st.caption("What was difficult today?")
+            challenges = st.text_area(
+                "Challenges",
+                value=existing_entry.iloc[0]['challenges'] if not existing_entry.empty else "",
+                height=120,
+                placeholder="What I struggled with...",
+                label_visibility="collapsed"
+            )
+
+            st.markdown("### 🎯 Tomorrow's Goals")
+            st.caption("What do you want to accomplish?")
+            tomorrow_goals = st.text_area(
+                "Tomorrow's Goals",
+                value=existing_entry.iloc[0]['tomorrow_goals'] if not existing_entry.empty else "",
+                height=120,
+                placeholder="Tomorrow I will...",
+                label_visibility="collapsed"
+            )
+
+        st.markdown("---")
+
+        # Submit button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            submitted = st.form_submit_button("💾 Save Journal Entry", use_container_width=True, type="primary")
 
         if submitted:
-            save_daily_entry(user_id, entry_date_str, mood, gratitude, highlights, challenges, tomorrow_goals)
-            st.success("✅ Journal entry saved!")
+            save_daily_entry(user_id, entry_date_str, mood_selection, gratitude, highlights, challenges, tomorrow_goals)
+            st.success("✅ Journal entry saved successfully!")
+            st.balloons()
+
+    # Show recent entries
+    if not existing_entry.empty:
+        st.markdown("---")
+        st.subheader("📖 Your Entry for " + entry_date.strftime("%B %d, %Y"))
+
+        mood_emoji = {1: '😢', 2: '😕', 3: '😐', 4: '🙂', 5: '😊'}
+        entry_mood = int(existing_entry.iloc[0]['mood']) if existing_entry.iloc[0]['mood'] else 3
+        if entry_mood in mood_emoji:
+            st.markdown(f"**Mood:** {mood_emoji[entry_mood]} {mood_options.get(entry_mood, 'N/A')}")
+
+        if existing_entry.iloc[0]['gratitude']:
+            st.markdown(f"**🙏 Gratitude:** {existing_entry.iloc[0]['gratitude']}")
+        if existing_entry.iloc[0]['highlights']:
+            st.markdown(f"**✨ Highlights:** {existing_entry.iloc[0]['highlights']}")
+        if existing_entry.iloc[0]['challenges']:
+            st.markdown(f"**💪 Challenges:** {existing_entry.iloc[0]['challenges']}")
+        if existing_entry.iloc[0]['tomorrow_goals']:
+            st.markdown(f"**🎯 Tomorrow's Goals:** {existing_entry.iloc[0]['tomorrow_goals']}")
 
 def show_achievements_page(user_id):
     st.header("🏆 Achievements & Milestones")
