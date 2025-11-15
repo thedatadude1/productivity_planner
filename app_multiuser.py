@@ -914,12 +914,11 @@ def show_admin_panel(user_id):
 
         if st.button("🗑️ Delete User", type="primary", key="admin_delete_button"):
             if confirm_text == "DELETE":
-                # Re-query the database to get the current user ID (avoid stale data)
-                fresh_conn = db.get_connection()
+                # Use the SAME connection that's already open to avoid isolation issues
+                # Re-query to get current user and verify they exist
                 current_users = pd.read_sql_query("""
                     SELECT id, username FROM users WHERE username = ?
-                """, fresh_conn, params=(username_to_delete,))
-                fresh_conn.close()
+                """, conn, params=(username_to_delete,))
 
                 if current_users.empty:
                     st.error(f"❌ User '{username_to_delete}' not found in database. They may have already been deleted.")
@@ -932,65 +931,43 @@ def show_admin_panel(user_id):
                         st.error("❌ You cannot delete your own account while logged in! Please create another admin account or use a different account to delete this one.")
                     else:
                         try:
-                            # Close the existing connection first
-                            try:
-                                conn.close()
-                            except:
-                                pass
+                            # Use the existing connection instead of creating a new one
+                            delete_cursor = conn.cursor()
 
-                            # Create a fresh connection for deletion
-                            delete_conn = sqlite3.connect(db.db_name)
-                            delete_cursor = delete_conn.cursor()
+                            # Disable foreign keys
+                            delete_cursor.execute("PRAGMA foreign_keys = OFF")
 
-                            # Verify user exists right before deletion
-                            delete_cursor.execute("SELECT id, username FROM users WHERE id = ?", (delete_user_id,))
-                            final_check = delete_cursor.fetchone()
+                            # Delete in correct order to avoid foreign key constraints
+                            delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                            achievements_deleted = delete_cursor.rowcount
 
-                            if not final_check:
-                                st.error(f"❌ User ID {delete_user_id} disappeared! The database might be read-only or there's a connection issue.")
-                                delete_conn.close()
+                            delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                            entries_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                            goals_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                            tasks_deleted = delete_cursor.rowcount
+
+                            delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                            user_deleted = delete_cursor.rowcount
+
+                            conn.commit()
+
+                            st.info(f"📊 Deletion results: {user_deleted} user, {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements")
+
+                            if user_deleted > 0:
+                                st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
+                                st.balloons()
+                                st.info("Refreshing page in 2 seconds...")
+                                import time
+                                time.sleep(2)
+                                st.rerun()
                             else:
-                                st.info(f"🔍 Confirmed: User exists - ID: {final_check[0]}, Username: {final_check[1]}")
-
-                                # Disable foreign keys
-                                delete_cursor.execute("PRAGMA foreign_keys = OFF")
-
-                                # Delete in correct order to avoid foreign key constraints
-                                delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
-                                achievements_deleted = delete_cursor.rowcount
-
-                                delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
-                                entries_deleted = delete_cursor.rowcount
-
-                                delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
-                                goals_deleted = delete_cursor.rowcount
-
-                                delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
-                                tasks_deleted = delete_cursor.rowcount
-
-                                delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
-                                user_deleted = delete_cursor.rowcount
-
-                                delete_conn.commit()
-                                delete_conn.close()
-
-                                st.info(f"📊 Deletion results: {user_deleted} user, {tasks_deleted} tasks, {goals_deleted} goals, {entries_deleted} entries, {achievements_deleted} achievements")
-
-                                if user_deleted > 0:
-                                    st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
-                                    st.balloons()
-                                    st.info("Refreshing page in 2 seconds...")
-                                    import time
-                                    time.sleep(2)
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ DELETE statement executed but returned 0 rows. This might be a database locking or permission issue.")
+                                st.error(f"❌ DELETE statement executed but returned 0 rows. This might be a database locking or permission issue.")
 
                         except Exception as e:
-                            try:
-                                delete_conn.close()
-                            except:
-                                pass
                             st.error(f"❌ Error deleting user: {str(e)}")
                             import traceback
                             st.code(traceback.format_exc())
