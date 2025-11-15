@@ -1087,6 +1087,315 @@ def show_analytics(user_id):
         - 💡 Personalized insights and recommendations
         """)
 
+    # Journal & Mood Analytics Section
+    st.markdown("---")
+    st.header("🧠 Journal & Mood Analytics")
+
+    journal_entries = pd.read_sql_query("""
+        SELECT entry_date, mood, gratitude, highlights, challenges
+        FROM daily_entries
+        WHERE user_id = ?
+        ORDER BY entry_date DESC
+    """, conn, params=(user_id,))
+
+    if not journal_entries.empty:
+        journal_entries['entry_date'] = pd.to_datetime(journal_entries['entry_date'])
+
+        # Row 1: Mood tracking
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("😊 Mood Trends Over Time")
+
+            # Filter out entries with mood data
+            mood_data = journal_entries[journal_entries['mood'].notna()].copy()
+
+            if not mood_data.empty:
+                fig_mood = px.line(
+                    mood_data,
+                    x='entry_date',
+                    y='mood',
+                    markers=True,
+                    line_shape='spline'
+                )
+
+                # Add mood emoji markers
+                mood_emojis = {1: '😢', 2: '😕', 3: '😐', 4: '🙂', 5: '😊'}
+
+                fig_mood.update_traces(
+                    line_color='#9b59b6',
+                    marker=dict(size=10, color='#e74c3c', line=dict(width=2, color='white'))
+                )
+
+                fig_mood.update_layout(
+                    height=350,
+                    xaxis_title="Date",
+                    yaxis_title="Mood Rating",
+                    yaxis=dict(tickmode='linear', tick0=1, dtick=1, range=[0.5, 5.5]),
+                    hovermode='x unified'
+                )
+
+                # Add horizontal line for average mood
+                avg_mood = mood_data['mood'].mean()
+                fig_mood.add_hline(
+                    y=avg_mood,
+                    line_dash="dash",
+                    line_color="green",
+                    annotation_text=f"Average: {avg_mood:.1f}",
+                    annotation_position="right"
+                )
+
+                st.plotly_chart(fig_mood, use_container_width=True)
+
+                # Mood insights
+                current_mood_trend = mood_data.head(7)['mood'].mean()
+                previous_mood_trend = mood_data.iloc[7:14]['mood'].mean() if len(mood_data) > 7 else None
+
+                if previous_mood_trend:
+                    mood_change = current_mood_trend - previous_mood_trend
+                    if mood_change > 0.3:
+                        st.success(f"📈 Your mood is trending upward! (+{mood_change:.1f} from last week)")
+                    elif mood_change < -0.3:
+                        st.warning(f"📉 Your mood has decreased recently ({mood_change:.1f} from last week)")
+                    else:
+                        st.info(f"😌 Your mood is stable (±{abs(mood_change):.1f} from last week)")
+
+            else:
+                st.info("Add mood ratings to your journal entries to see mood trends!")
+
+        with col2:
+            st.subheader("📊 Mood Distribution")
+
+            if not mood_data.empty:
+                mood_counts = mood_data['mood'].value_counts().sort_index().reset_index()
+                mood_counts.columns = ['mood', 'count']
+
+                # Map mood numbers to emojis
+                mood_labels = {1: '1 - 😢 Very Bad', 2: '2 - 😕 Bad', 3: '3 - 😐 Neutral', 4: '4 - 🙂 Good', 5: '5 - 😊 Great'}
+                mood_counts['mood_label'] = mood_counts['mood'].map(mood_labels)
+
+                mood_colors_scale = ['#e74c3c', '#e67e22', '#f39c12', '#27ae60', '#2ecc71']
+
+                fig_mood_dist = px.bar(
+                    mood_counts,
+                    x='mood_label',
+                    y='count',
+                    color='mood',
+                    color_continuous_scale=mood_colors_scale,
+                    text='count'
+                )
+
+                fig_mood_dist.update_traces(textposition='outside')
+                fig_mood_dist.update_layout(
+                    height=350,
+                    xaxis_title="Mood Rating",
+                    yaxis_title="Number of Days",
+                    showlegend=False,
+                    xaxis_tickangle=-45
+                )
+
+                st.plotly_chart(fig_mood_dist, use_container_width=True)
+
+                # Most common mood
+                most_common_mood = mood_data['mood'].mode()
+                if not most_common_mood.empty:
+                    mood_emoji = mood_labels[most_common_mood[0]]
+                    st.info(f"🎭 Your most common mood: **{mood_emoji}**")
+
+            else:
+                st.info("Add mood ratings to see your mood distribution!")
+
+        st.markdown("---")
+
+        # Row 2: Gratitude & Sentiment Analysis
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("🙏 Gratitude Journal Insights")
+
+            gratitude_entries = journal_entries[journal_entries['gratitude'].notna()].copy()
+
+            if not gratitude_entries.empty:
+                # Count gratitude entries over time
+                gratitude_entries['month'] = gratitude_entries['entry_date'].dt.to_period('M').astype(str)
+                gratitude_by_month = gratitude_entries.groupby('month').size().reset_index()
+                gratitude_by_month.columns = ['month', 'count']
+
+                fig_gratitude = px.bar(
+                    gratitude_by_month,
+                    x='month',
+                    y='count',
+                    color='count',
+                    color_continuous_scale='Teal',
+                    text='count'
+                )
+
+                fig_gratitude.update_traces(textposition='outside')
+                fig_gratitude.update_layout(
+                    height=300,
+                    xaxis_title="Month",
+                    yaxis_title="Gratitude Entries",
+                    showlegend=False
+                )
+
+                st.plotly_chart(fig_gratitude, use_container_width=True)
+
+                # Gratitude stats
+                total_gratitude = len(gratitude_entries)
+                st.success(f"✨ You've expressed gratitude **{total_gratitude}** times!")
+
+                # Simple word frequency analysis
+                all_gratitude_text = ' '.join(gratitude_entries['gratitude'].astype(str).str.lower())
+                positive_words = ['happy', 'love', 'grateful', 'thankful', 'blessed', 'amazing', 'wonderful', 'great', 'joy', 'appreciate']
+                word_counts = {word: all_gratitude_text.count(word) for word in positive_words}
+                top_positive_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+
+                if top_positive_words[0][1] > 0:
+                    st.info(f"💭 Your most used gratitude words: **{', '.join([w[0] for w in top_positive_words if w[1] > 0])}**")
+
+            else:
+                st.info("Start adding gratitude entries to track your thankfulness!")
+
+        with col2:
+            st.subheader("⭐ Highlights vs Challenges")
+
+            highlights_count = journal_entries[journal_entries['highlights'].notna()].shape[0]
+            challenges_count = journal_entries[journal_entries['challenges'].notna()].shape[0]
+
+            highlight_challenge_data = pd.DataFrame({
+                'type': ['Highlights 🌟', 'Challenges ⚠️'],
+                'count': [highlights_count, challenges_count]
+            })
+
+            fig_hl_ch = px.bar(
+                highlight_challenge_data,
+                x='type',
+                y='count',
+                color='type',
+                color_discrete_map={'Highlights 🌟': '#3498db', 'Challenges ⚠️': '#e67e22'},
+                text='count'
+            )
+
+            fig_hl_ch.update_traces(textposition='outside')
+            fig_hl_ch.update_layout(
+                height=300,
+                xaxis_title="",
+                yaxis_title="Number of Entries",
+                showlegend=False
+            )
+
+            st.plotly_chart(fig_hl_ch, use_container_width=True)
+
+            # Positivity ratio
+            if highlights_count + challenges_count > 0:
+                positivity_ratio = highlights_count / (highlights_count + challenges_count) * 100
+                if positivity_ratio >= 60:
+                    st.success(f"🌈 Great positivity ratio: **{positivity_ratio:.0f}%** highlights!")
+                elif positivity_ratio >= 40:
+                    st.info(f"⚖️ Balanced outlook: **{positivity_ratio:.0f}%** highlights")
+                else:
+                    st.warning(f"💪 Stay strong! **{positivity_ratio:.0f}%** highlights - focus on the positives!")
+
+        st.markdown("---")
+
+        # Row 3: Mood-Productivity Correlation
+        st.subheader("🔗 Mood & Productivity Correlation")
+
+        # Get tasks completed on journal days
+        mood_productivity_data = mood_data.copy()
+
+        if not mood_productivity_data.empty and not all_tasks.empty:
+            # Count completed tasks per day
+            completed_by_day = all_tasks[all_tasks['status'] == 'completed'].copy()
+            if not completed_by_day.empty and 'completed_at' in completed_by_day.columns:
+                completed_by_day['completion_date'] = completed_by_day['completed_at'].dt.date
+                tasks_per_day = completed_by_day.groupby('completion_date').size().reset_index()
+                tasks_per_day.columns = ['date', 'tasks_completed']
+
+                # Merge with mood data
+                mood_productivity_data['date'] = mood_productivity_data['entry_date'].dt.date
+                merged_data = mood_productivity_data.merge(tasks_per_day, on='date', how='left')
+                merged_data['tasks_completed'] = merged_data['tasks_completed'].fillna(0)
+
+                if not merged_data.empty and merged_data['tasks_completed'].sum() > 0:
+                    fig_correlation = px.scatter(
+                        merged_data,
+                        x='mood',
+                        y='tasks_completed',
+                        size='tasks_completed',
+                        color='mood',
+                        color_continuous_scale='Viridis',
+                        trendline='ols',
+                        labels={'mood': 'Mood Rating', 'tasks_completed': 'Tasks Completed'}
+                    )
+
+                    fig_correlation.update_layout(
+                        height=350,
+                        xaxis=dict(tickmode='linear', tick0=1, dtick=1)
+                    )
+
+                    st.plotly_chart(fig_correlation, use_container_width=True)
+
+                    # Calculate correlation
+                    correlation = merged_data[['mood', 'tasks_completed']].corr().iloc[0, 1]
+
+                    if abs(correlation) > 0.5:
+                        if correlation > 0:
+                            st.success(f"📈 Strong positive correlation! Better mood = More productivity (r={correlation:.2f})")
+                        else:
+                            st.info(f"📊 Interesting pattern: Lower mood correlates with higher productivity (r={correlation:.2f})")
+                    else:
+                        st.info(f"📊 Weak correlation between mood and productivity (r={correlation:.2f})")
+                else:
+                    st.info("Complete more tasks on days you journal to see mood-productivity correlation!")
+            else:
+                st.info("Complete tasks to see the correlation between mood and productivity!")
+        else:
+            st.info("Add journal entries with mood ratings and complete tasks to see correlations!")
+
+        # Summary insights
+        st.markdown("---")
+        st.subheader("💭 Journal Summary")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Journal Entries", len(journal_entries))
+
+        with col2:
+            if not mood_data.empty:
+                avg_mood = mood_data['mood'].mean()
+                mood_emoji = {1: '😢', 2: '😕', 3: '😐', 4: '🙂', 5: '😊'}
+                closest_mood = min(mood_emoji.keys(), key=lambda x: abs(x - avg_mood))
+                st.metric("Average Mood", f"{avg_mood:.1f} {mood_emoji[closest_mood]}")
+            else:
+                st.metric("Average Mood", "N/A")
+
+        with col3:
+            consecutive_days = 0
+            if not journal_entries.empty:
+                sorted_dates = journal_entries['entry_date'].dt.date.sort_values(ascending=False).unique()
+                for i in range(len(sorted_dates) - 1):
+                    if (sorted_dates[i] - sorted_dates[i + 1]).days == 1:
+                        consecutive_days += 1
+                    else:
+                        break
+                consecutive_days += 1 if len(sorted_dates) > 0 else 0
+
+            st.metric("Journal Streak", f"{consecutive_days} days")
+
+    else:
+        st.info("📝 Start journaling to see mood analytics, gratitude insights, and emotional well-being trends!")
+        st.markdown("""
+        Your journal analytics will show:
+        - 😊 Mood trends and patterns over time
+        - 📊 Mood distribution analysis
+        - 🙏 Gratitude journaling insights
+        - ⭐ Highlights vs challenges ratio
+        - 🔗 Mood-productivity correlation
+        - 💭 Journal streaks and summaries
+        """)
+
     conn.close()
 
 def show_admin_panel(user_id):
