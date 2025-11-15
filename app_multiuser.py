@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 import random
 import json
 import hashlib
+import os
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
@@ -812,6 +813,10 @@ def show_admin_panel(user_id):
         return
 
     st.info("📊 View all registered users and database statistics")
+
+    # Check if running on Streamlit Cloud
+    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud':
+        st.warning("⚠️ **Streamlit Cloud Limitation**: User deletion may not work on Streamlit Community Cloud due to ephemeral filesystem. For full admin functionality, consider running locally or using a PostgreSQL database.")
 
     conn = db.get_connection()
 
