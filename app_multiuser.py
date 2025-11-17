@@ -163,6 +163,20 @@ class DatabaseManager:
             if admin_user:
                 cursor.execute("UPDATE users SET is_admin = 1 WHERE username = 'thedatadude'")
 
+        # Ensure admin account exists (for first-time setup on cloud)
+        cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
+        admin_exists = cursor.fetchone()
+
+        if not admin_exists:
+            # Create admin account with Argon2 hash
+            from argon2 import PasswordHasher
+            ph_init = PasswordHasher()
+            admin_hash = ph_init.hash("Jacobm1313!")
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, email, is_admin)
+                VALUES ('thedatadude', ?, 'admin@productivity.app', 1)
+            """, (admin_hash,))
+
         conn.commit()
         conn.close()
 
