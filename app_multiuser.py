@@ -875,8 +875,14 @@ def show_tasks(user_id):
             if submitted and title:
                 tags = [tag.strip() for tag in tags_input.split(",")] if tags_input else []
                 add_task(user_id, title, description, category, priority, due_date.strftime("%Y-%m-%d"), estimated_hours, tags)
-                st.success(f"✅ Task '{title}' added successfully!")
+                st.success(f"✅ **Task Added!** '{title}' has been successfully added to your task list.")
+                st.balloons()
+                st.info("Redirecting to task list...")
+                import time
+                time.sleep(1.5)
                 st.rerun()
+            elif submitted and not title:
+                st.error("❌ Please enter a task title!")
 
     with tab2:
         st.subheader("Your Tasks")
