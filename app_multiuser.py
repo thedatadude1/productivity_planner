@@ -834,6 +834,11 @@ def show_dashboard(user_id):
                     with col_b:
                         if st.button("✓", key=f"complete_dash_{task['id']}"):
                             update_task_status(user_id, task['id'], 'completed')
+                            st.success("🎉 Task Completed!")
+                            st.balloons()
+                            st.snow()
+                            import time
+                            time.sleep(1.5)
                             st.rerun()
             else:
                 st.success("🎉 No urgent tasks! You're doing great!")
@@ -911,10 +916,79 @@ def show_tasks(user_id):
                         if task['status'] != 'completed':
                             if st.button("✓ Complete", key=f"complete_{task['id']}"):
                                 update_task_status(user_id, task['id'], 'completed')
+                                st.success(f"🎉 **Task Completed!** Great job on '{task['title']}'!")
+                                st.balloons()
+                                st.snow()
+                                import time
+                                time.sleep(2)
                                 st.rerun()
+
+                        # Edit button
+                        if st.button("✏️ Edit", key=f"edit_{task['id']}"):
+                            st.session_state[f'editing_{task["id"]}'] = True
+                            st.rerun()
+
                         if st.button("🗑️ Delete", key=f"delete_{task['id']}"):
                             delete_task(user_id, task['id'])
+                            st.warning(f"Task '{task['title']}' deleted")
                             st.rerun()
+
+                    # Edit form (shown when edit button is clicked)
+                    if st.session_state.get(f'editing_{task["id"]}', False):
+                        st.markdown("---")
+                        st.subheader("✏️ Edit Task")
+
+                        with st.form(key=f"edit_form_{task['id']}"):
+                            edit_col1, edit_col2 = st.columns(2)
+
+                            with edit_col1:
+                                edit_title = st.text_input("Title", value=task['title'])
+                                edit_category = st.selectbox("Category",
+                                    ["Work", "Personal", "Health", "Learning", "Finance", "Other"],
+                                    index=["Work", "Personal", "Health", "Learning", "Finance", "Other"].index(task['category']))
+                                edit_priority = st.selectbox("Priority",
+                                    ["high", "medium", "low"],
+                                    index=["high", "medium", "low"].index(task['priority']))
+
+                            with edit_col2:
+                                edit_due_date = st.date_input("Due Date", value=task['due_date'])
+                                edit_estimated_hours = st.number_input("Estimated Hours",
+                                    value=float(task['estimated_hours']) if task['estimated_hours'] else 1.0,
+                                    min_value=0.0, max_value=100.0, step=0.5)
+                                edit_status = st.selectbox("Status",
+                                    ["pending", "in_progress", "completed"],
+                                    index=["pending", "in_progress", "completed"].index(task['status']))
+
+                            edit_description = st.text_area("Description", value=task['description'] if task['description'] else "")
+
+                            col_save, col_cancel = st.columns(2)
+                            with col_save:
+                                save_changes = st.form_submit_button("💾 Save Changes", use_container_width=True)
+                            with col_cancel:
+                                cancel_edit = st.form_submit_button("❌ Cancel", use_container_width=True)
+
+                            if save_changes:
+                                # Update the task in database
+                                conn = db.get_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE tasks
+                                    SET title=?, description=?, category=?, priority=?,
+                                        due_date=?, estimated_hours=?, status=?
+                                    WHERE id=? AND user_id=?
+                                """, (edit_title, edit_description, edit_category, edit_priority,
+                                      edit_due_date.strftime("%Y-%m-%d"), edit_estimated_hours,
+                                      edit_status, task['id'], user_id))
+                                conn.commit()
+                                conn.close()
+
+                                st.success("✅ Task updated successfully!")
+                                del st.session_state[f'editing_{task["id"]}']
+                                st.rerun()
+
+                            if cancel_edit:
+                                del st.session_state[f'editing_{task["id"]}']
+                                st.rerun()
         else:
             st.info("No tasks found. Add your first task above!")
 
