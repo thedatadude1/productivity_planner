@@ -11,6 +11,7 @@ import hashlib
 import os
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from openai import OpenAI
 
 # Page configuration
 st.set_page_config(
@@ -502,6 +503,214 @@ def get_daily_entry(user_id, entry_date):
     conn.close()
     return df
 
+# AI Assistant Functions
+def get_openai_client():
+    """Initialize OpenAI client with API key from secrets"""
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY", None)
+        if not api_key:
+            return None
+        return OpenAI(api_key=api_key)
+    except Exception as e:
+        return None
+
+def ai_create_tasks(user_prompt, user_id):
+    """Use AI to create tasks from natural language"""
+    client = get_openai_client()
+
+    if not client:
+        return 0, "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
+
+    system_prompt = """You are a productivity assistant. Convert user requests into structured tasks.
+    Return ONLY a valid JSON object (not an array) with a "tasks" key containing an array of task objects.
+    Each task must have these fields:
+    - title: Task title (required, string)
+    - description: Detailed description (string)
+    - category: One of [Work, Personal, Health, Learning, Finance, Other]
+    - priority: One of [high, medium, low]
+    - due_date: YYYY-MM-DD format (use reasonable dates based on context)
+    - estimated_hours: Float number (reasonable estimate)
+
+    Example user input: "I need to finish my project report by Friday and schedule a dentist appointment"
+    Example output: {
+        "tasks": [
+            {
+                "title": "Finish project report",
+                "description": "Complete and submit project report",
+                "category": "Work",
+                "priority": "high",
+                "due_date": "2025-01-17",
+                "estimated_hours": 3.0
+            },
+            {
+                "title": "Schedule dentist appointment",
+                "description": "Call dentist office to schedule appointment",
+                "category": "Health",
+                "priority": "medium",
+                "due_date": "2025-01-20",
+                "estimated_hours": 0.5
+            }
+        ]
+    }
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+
+        tasks_data = json.loads(response.choices[0].message.content)
+
+        # Add tasks to database
+        tasks_added = 0
+        for task in tasks_data.get("tasks", []):
+            add_task(
+                user_id,
+                task.get("title", "Untitled Task"),
+                task.get("description", ""),
+                task.get("category", "Other"),
+                task.get("priority", "medium"),
+                task.get("due_date", (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")),
+                task.get("estimated_hours", 1.0),
+                []
+            )
+            tasks_added += 1
+
+        return tasks_added, f"Successfully created {tasks_added} task(s)!"
+
+    except Exception as e:
+        return 0, f"Error creating tasks: {str(e)}"
+
+def ai_productivity_insights(user_id):
+    """Generate AI insights about productivity patterns"""
+    client = get_openai_client()
+
+    if not client:
+        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
+
+    # Get user's task history
+    conn = db.get_connection()
+    tasks = pd.read_sql_query("""
+        SELECT title, category, priority, status,
+               DATE(created_at) as created, DATE(completed_at) as completed
+        FROM tasks
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 50
+    """, conn, params=(user_id,))
+    conn.close()
+
+    if tasks.empty:
+        return "Not enough data yet. Complete more tasks to get insights!"
+
+    # Create context for AI
+    task_summary = f"""
+    User has {len(tasks)} recent tasks:
+    - Completed: {len(tasks[tasks['status'] == 'completed'])}
+    - Pending: {len(tasks[tasks['status'] == 'pending'])}
+    - Categories: {tasks['category'].value_counts().to_dict()}
+    - Priorities: {tasks['priority'].value_counts().to_dict()}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a productivity coach. Analyze task patterns and provide 3-4 actionable insights in a friendly, encouraging tone. Keep it concise and practical."},
+                {"role": "user", "content": task_summary}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"Error generating insights: {str(e)}"
+
+def ai_daily_planner(user_id):
+    """AI suggests tasks for today based on patterns"""
+    client = get_openai_client()
+
+    if not client:
+        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
+
+    # Get pending tasks and user patterns
+    conn = db.get_connection()
+    pending_tasks = pd.read_sql_query("""
+        SELECT title, category, priority, due_date, estimated_hours
+        FROM tasks
+        WHERE user_id = ? AND status = 'pending'
+        ORDER BY priority DESC, due_date ASC
+        LIMIT 20
+    """, conn, params=(user_id,))
+    conn.close()
+
+    if pending_tasks.empty:
+        return "You have no pending tasks! Great job! 🎉"
+
+    context = f"""User has {len(pending_tasks)} pending tasks. Suggest which 5-7 tasks to focus on today for optimal productivity.
+    Consider priority levels and due dates. Be encouraging and practical.
+
+    Tasks:
+    {pending_tasks.to_string()}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a productivity planner. Suggest a daily task list that's realistic and balanced. Use emojis and be encouraging."},
+                {"role": "user", "content": context}
+            ],
+            temperature=0.7,
+            max_tokens=400
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"Error creating daily plan: {str(e)}"
+
+def ai_chat_assistant(user_prompt, user_id):
+    """General AI assistant for productivity questions"""
+    client = get_openai_client()
+
+    if not client:
+        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
+
+    # Get user context
+    stats = get_productivity_stats(user_id)
+
+    context = f"""User productivity stats:
+    - Total tasks: {stats['total_tasks']}
+    - Completed: {stats['completed_tasks']}
+    - Completion rate: {stats['completion_rate']:.1f}%
+    - Current streak: {stats['streak']} days
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": f"You are a helpful productivity assistant. Help the user with their productivity questions and provide actionable advice. User context: {context}"},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 # Authentication Page
 def show_auth_page():
     st.markdown('<h1 class="main-header">🚀 Ultimate Productivity Planner</h1>', unsafe_allow_html=True)
@@ -583,7 +792,8 @@ def main():
         "📅 Calendar View",
         "📝 Daily Journal",
         "🏆 Achievements",
-        "📈 Analytics"
+        "📈 Analytics",
+        "🤖 AI Assistant"
     ]
 
     # Only show Admin Panel to admins
@@ -606,6 +816,8 @@ def main():
         show_achievements_page(user_id)
     elif page == "📈 Analytics":
         show_analytics(user_id)
+    elif page == "🤖 AI Assistant":
+        show_ai_assistant(user_id)
     elif page == "👥 Admin Panel":
         show_admin_panel(user_id)
 
@@ -1981,6 +2193,202 @@ def show_admin_panel(user_id):
     st.subheader("💾 Database Information")
     st.caption("Database: productivity_planner_multiuser.db")
     st.caption("⚠️ Note: Passwords are securely hashed with Argon2 and cannot be viewed")
+
+def show_ai_assistant(user_id):
+    st.header("🤖 AI Productivity Assistant")
+
+    # Check if API key is configured
+    if not st.secrets.get("OPENAI_API_KEY", None):
+        st.error("⚠️ OpenAI API Key Not Configured")
+        st.markdown("""
+        To use the AI Assistant, you need to configure your OpenAI API key:
+
+        1. **Get an API Key**: Visit [OpenAI Platform](https://platform.openai.com/api-keys)
+        2. **Add to Secrets**: Create `.streamlit/secrets.toml` with:
+        ```toml
+        OPENAI_API_KEY = "your-api-key-here"
+        ```
+        3. **For Streamlit Cloud**: Add the key in your app settings under "Secrets"
+
+        **Cost Estimate**: ~$0.01-0.02 per AI request. GPT-4 provides the best results.
+        """)
+        return
+
+    st.markdown("💬 **Chat with your AI productivity coach to create tasks, get insights, and plan your day!**")
+    st.markdown("---")
+
+    # AI Feature Tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat Assistant", "📝 Create Tasks", "💡 Get Insights", "📅 Plan Today"])
+
+    with tab1:
+        st.subheader("💬 Chat with Your AI Assistant")
+        st.caption("Ask questions about productivity, get advice, or discuss your goals")
+
+        # Chat interface
+        user_question = st.text_area(
+            "What would you like to ask?",
+            placeholder="Example: How can I be more productive? What should I prioritize today? Give me tips for staying focused.",
+            height=100,
+            key="ai_chat_input"
+        )
+
+        if st.button("🤖 Ask AI", use_container_width=True, type="primary"):
+            if user_question:
+                with st.spinner("AI is thinking..."):
+                    response = ai_chat_assistant(user_question, user_id)
+                    st.markdown("### 🤖 AI Response:")
+                    st.info(response)
+            else:
+                st.warning("Please enter a question first!")
+
+        # Example questions
+        st.markdown("---")
+        st.caption("💡 **Example Questions:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("How can I improve my productivity?", key="example1"):
+                with st.spinner("AI is thinking..."):
+                    response = ai_chat_assistant("How can I improve my productivity based on my current stats?", user_id)
+                    st.markdown("### 🤖 AI Response:")
+                    st.info(response)
+
+        with col2:
+            if st.button("What are my productivity strengths?", key="example2"):
+                with st.spinner("AI is thinking..."):
+                    response = ai_chat_assistant("Based on my productivity stats, what am I doing well?", user_id)
+                    st.markdown("### 🤖 AI Response:")
+                    st.info(response)
+
+    with tab2:
+        st.subheader("📝 Create Tasks with Natural Language")
+        st.caption("Describe your tasks in plain English and let AI create them for you!")
+
+        user_input = st.text_area(
+            "Describe your tasks:",
+            placeholder="Example: I need to prepare a presentation for Monday's meeting, call the dentist tomorrow, and finish the project report by Friday afternoon. Also schedule time to exercise 3 times this week.",
+            height=120,
+            key="ai_create_tasks_input"
+        )
+
+        if st.button("🪄 Create Tasks with AI", use_container_width=True, type="primary"):
+            if user_input:
+                with st.spinner("AI is creating your tasks..."):
+                    num_tasks, message = ai_create_tasks(user_input, user_id)
+                    if num_tasks > 0:
+                        st.success(message)
+                        st.balloons()
+                        st.markdown(f"**{num_tasks} task(s) have been added to your task list!**")
+                        st.info("Go to the Tasks tab to view and manage them.")
+                    else:
+                        st.error(message)
+            else:
+                st.warning("Please describe the tasks you want to create!")
+
+        # Example prompts
+        st.markdown("---")
+        st.caption("💡 **Example Prompts:**")
+        st.markdown("""
+        - "I need to organize a team meeting next week and prepare the quarterly report"
+        - "Help me plan my workout routine: gym on Monday, Wednesday, Friday"
+        - "Create tasks for my home renovation project: get quotes, buy materials, schedule contractor"
+        - "I want to learn Python: find a course, practice daily, build a project"
+        """)
+
+    with tab3:
+        st.subheader("💡 Productivity Insights")
+        st.caption("Get AI-powered analysis of your productivity patterns")
+
+        if st.button("📊 Analyze My Productivity", use_container_width=True, type="primary"):
+            with st.spinner("Analyzing your productivity patterns..."):
+                insights = ai_productivity_insights(user_id)
+                st.markdown("### 💡 Your Productivity Insights:")
+                st.info(insights)
+
+        # Show quick stats
+        st.markdown("---")
+        st.caption("📈 **Current Stats:**")
+        stats = get_productivity_stats(user_id)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Tasks", stats['total_tasks'])
+        with col2:
+            st.metric("Completed", stats['completed_tasks'])
+        with col3:
+            st.metric("Completion Rate", f"{stats['completion_rate']:.0f}%")
+        with col4:
+            st.metric("Streak", f"{stats['streak']} days")
+
+    with tab4:
+        st.subheader("📅 AI Daily Planner")
+        st.caption("Get AI suggestions for what to focus on today")
+
+        if st.button("🎯 Generate Today's Plan", use_container_width=True, type="primary"):
+            with st.spinner("Creating your optimal daily plan..."):
+                plan = ai_daily_planner(user_id)
+                st.markdown("### 📋 Today's Suggested Focus:")
+                st.success(plan)
+
+        # Show pending tasks count
+        st.markdown("---")
+        pending_tasks = get_tasks(user_id, status='pending')
+        if not pending_tasks.empty:
+            st.caption(f"📝 **You have {len(pending_tasks)} pending tasks**")
+
+            # Quick preview of high priority tasks
+            high_priority = pending_tasks[pending_tasks['priority'] == 'high']
+            if not high_priority.empty:
+                st.warning(f"⚠️ **{len(high_priority)} high priority tasks** need your attention!")
+
+    # AI Features Overview
+    st.markdown("---")
+    st.subheader("🌟 AI Features Overview")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        **💬 Natural Language Task Creation**
+        - Describe tasks in plain English
+        - AI extracts title, category, priority
+        - Automatically sets due dates
+        - Estimates time required
+
+        **📅 Smart Daily Planning**
+        - Suggests optimal task order
+        - Considers priorities and deadlines
+        - Balances workload
+        - Adapts to your patterns
+        """)
+
+    with col2:
+        st.markdown("""
+        **💡 Productivity Insights**
+        - Analyzes completion patterns
+        - Identifies productive times
+        - Suggests improvements
+        - Tracks progress trends
+
+        **🤖 Intelligent Chat Assistant**
+        - Answers productivity questions
+        - Provides personalized advice
+        - Helps with goal setting
+        - Offers motivation and tips
+        """)
+
+    # Cost information
+    with st.expander("💰 Cost Information"):
+        st.markdown("""
+        **OpenAI GPT-4 Pricing:**
+        - Typical task creation: $0.01-0.02 per request
+        - Insights generation: $0.01-0.03 per request
+        - Chat messages: $0.005-0.02 per message
+        - **Estimated monthly cost**: $5-20 for regular use
+
+        **Tips to minimize costs:**
+        - Use task creation for multiple tasks at once
+        - Generate insights weekly instead of daily
+        - Ask clear, specific questions to get concise responses
+        """)
 
 if __name__ == "__main__":
     main()
