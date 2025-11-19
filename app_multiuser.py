@@ -2162,15 +2162,22 @@ def show_ai_assistant(user_id):
     has_key = False
     api_key = None
 
+    # Debug: Show all available secret keys
     try:
-        # Check if secrets exist
         if hasattr(st, 'secrets'):
-            api_key = st.secrets.get("GOOGLE_API_KEY", None)
-            if api_key:
-                has_key = True
-                st.info(f"✓ API Key detected: {api_key[:10]}...")
+            available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+            st.info(f"Debug - Available secret keys: {available_keys}")
+
+            # Try to get the API key
+            if "GOOGLE_API_KEY" in available_keys:
+                api_key = st.secrets["GOOGLE_API_KEY"]
+                if api_key:
+                    has_key = True
+                    st.success(f"✓ API Key detected: {api_key[:10]}...")
+            else:
+                st.warning("Debug - GOOGLE_API_KEY not found in secrets")
     except Exception as e:
-        st.warning(f"Debug - Error accessing secrets: {str(e)}")
+        st.error(f"Debug - Error accessing secrets: {str(e)}")
 
     if not has_key:
         st.error("⚠️ Google Gemini API Key Not Configured")
