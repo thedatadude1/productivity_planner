@@ -11,7 +11,13 @@ import hashlib
 import os
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from openai import OpenAI
+
+# Google Gemini AI import
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -504,68 +510,63 @@ def get_daily_entry(user_id, entry_date):
     return df
 
 # AI Assistant Functions
-def get_openai_client():
-    """Initialize OpenAI client with API key from secrets"""
+def get_gemini_client():
+    """Initialize Google Gemini AI client"""
+    if not GEMINI_AVAILABLE:
+        return None
+
+    api_key = st.secrets.get("GOOGLE_API_KEY", None)
+    if not api_key:
+        return None
+
     try:
-        api_key = st.secrets.get("OPENAI_API_KEY", None)
-        if not api_key:
-            return None
-        return OpenAI(api_key=api_key)
+        genai.configure(api_key=api_key)
+        return genai.GenerativeModel('gemini-pro')
     except Exception as e:
         return None
 
-def ai_create_tasks(user_prompt, user_id):
-    """Use AI to create tasks from natural language"""
-    client = get_openai_client()
+def call_gemini(system_prompt, user_prompt):
+    """Call Google Gemini AI"""
+    client = get_gemini_client()
 
     if not client:
-        return 0, "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
+        return None, "AI not configured. Please add GOOGLE_API_KEY from https://makersuite.google.com/app/apikey"
+
+    try:
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response = client.generate_content(full_prompt)
+        return response.text, "success"
+    except Exception as e:
+        return None, f"Error: {str(e)}"
+
+def ai_create_tasks(user_prompt, user_id):
+    """Use Google Gemini AI to create tasks from natural language"""
+    client = get_gemini_client()
+
+    if not client:
+        return 0, "Please add your Google Gemini API key. Get it at: https://makersuite.google.com/app/apikey"
 
     system_prompt = """You are a productivity assistant. Convert user requests into structured tasks.
-    Return ONLY a valid JSON object (not an array) with a "tasks" key containing an array of task objects.
-    Each task must have these fields:
-    - title: Task title (required, string)
-    - description: Detailed description (string)
-    - category: One of [Work, Personal, Health, Learning, Finance, Other]
-    - priority: One of [high, medium, low]
-    - due_date: YYYY-MM-DD format (use reasonable dates based on context)
-    - estimated_hours: Float number (reasonable estimate)
+    Return ONLY a valid JSON object with a "tasks" key containing an array of task objects.
+    Each task must have: title, description, category (Work/Personal/Health/Learning/Finance/Other),
+    priority (high/medium/low), due_date (YYYY-MM-DD), estimated_hours (number).
 
-    Example user input: "I need to finish my project report by Friday and schedule a dentist appointment"
-    Example output: {
-        "tasks": [
-            {
-                "title": "Finish project report",
-                "description": "Complete and submit project report",
-                "category": "Work",
-                "priority": "high",
-                "due_date": "2025-01-17",
-                "estimated_hours": 3.0
-            },
-            {
-                "title": "Schedule dentist appointment",
-                "description": "Call dentist office to schedule appointment",
-                "category": "Health",
-                "priority": "medium",
-                "due_date": "2025-01-20",
-                "estimated_hours": 0.5
-            }
-        ]
-    }
+    Example: {"tasks": [{"title": "Finish project report", "description": "Complete and submit",
+    "category": "Work", "priority": "high", "due_date": "2025-01-17", "estimated_hours": 3.0}]}
     """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
+        full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
+        response = client.generate_content(full_prompt)
+        response_text = response.text
 
-        tasks_data = json.loads(response.choices[0].message.content)
+        # Parse JSON from response - Gemini sometimes wraps in markdown
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+
+        tasks_data = json.loads(response_text)
 
         # Add tasks to database
         tasks_added = 0
@@ -582,19 +583,13 @@ def ai_create_tasks(user_prompt, user_id):
             )
             tasks_added += 1
 
-        return tasks_added, f"Successfully created {tasks_added} task(s)!"
+        return tasks_added, f"✅ Successfully created {tasks_added} task(s)!"
 
     except Exception as e:
         return 0, f"Error creating tasks: {str(e)}"
 
 def ai_productivity_insights(user_id):
-    """Generate AI insights about productivity patterns"""
-    client = get_openai_client()
-
-    if not client:
-        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
-
-    # Get user's task history
+    """Generate AI insights using Google Gemini"""
     conn = db.get_connection()
     tasks = pd.read_sql_query("""
         SELECT title, category, priority, status,
@@ -609,39 +604,21 @@ def ai_productivity_insights(user_id):
     if tasks.empty:
         return "Not enough data yet. Complete more tasks to get insights!"
 
-    # Create context for AI
-    task_summary = f"""
-    User has {len(tasks)} recent tasks:
+    task_summary = f"""User has {len(tasks)} recent tasks:
     - Completed: {len(tasks[tasks['status'] == 'completed'])}
     - Pending: {len(tasks[tasks['status'] == 'pending'])}
     - Categories: {tasks['category'].value_counts().to_dict()}
-    - Priorities: {tasks['priority'].value_counts().to_dict()}
-    """
+    - Priorities: {tasks['priority'].value_counts().to_dict()}"""
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a productivity coach. Analyze task patterns and provide 3-4 actionable insights in a friendly, encouraging tone. Keep it concise and practical."},
-                {"role": "user", "content": task_summary}
-            ],
-            temperature=0.7,
-            max_tokens=300
-        )
+    response, status = call_gemini(
+        "You are a productivity coach. Analyze task patterns and provide 3-4 actionable insights in a friendly tone.",
+        task_summary
+    )
 
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"Error generating insights: {str(e)}"
+    return response if response else "Please add your Google Gemini API key to use this feature."
 
 def ai_daily_planner(user_id):
-    """AI suggests tasks for today based on patterns"""
-    client = get_openai_client()
-
-    if not client:
-        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
-
-    # Get pending tasks and user patterns
+    """AI daily planner using Google Gemini"""
     conn = db.get_connection()
     pending_tasks = pd.read_sql_query("""
         SELECT title, category, priority, due_date, estimated_hours
@@ -655,61 +632,31 @@ def ai_daily_planner(user_id):
     if pending_tasks.empty:
         return "You have no pending tasks! Great job! 🎉"
 
-    context = f"""User has {len(pending_tasks)} pending tasks. Suggest which 5-7 tasks to focus on today for optimal productivity.
-    Consider priority levels and due dates. Be encouraging and practical.
+    context = f"""User has {len(pending_tasks)} pending tasks. Suggest 5-7 to focus on today.
+    Tasks:\n{pending_tasks.to_string()}"""
 
-    Tasks:
-    {pending_tasks.to_string()}
-    """
+    response, status = call_gemini(
+        "You are a productivity planner. Suggest a realistic daily task list. Use emojis and be encouraging.",
+        context
+    )
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a productivity planner. Suggest a daily task list that's realistic and balanced. Use emojis and be encouraging."},
-                {"role": "user", "content": context}
-            ],
-            temperature=0.7,
-            max_tokens=400
-        )
-
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"Error creating daily plan: {str(e)}"
+    return response if response else "Please add your Google Gemini API key to use this feature."
 
 def ai_chat_assistant(user_prompt, user_id):
-    """General AI assistant for productivity questions"""
-    client = get_openai_client()
-
-    if not client:
-        return "AI assistant is not configured. Please add OPENAI_API_KEY to your Streamlit secrets."
-
-    # Get user context
+    """AI chat assistant using Google Gemini"""
     stats = get_productivity_stats(user_id)
 
-    context = f"""User productivity stats:
-    - Total tasks: {stats['total_tasks']}
-    - Completed: {stats['completed_tasks']}
-    - Completion rate: {stats['completion_rate']:.1f}%
-    - Current streak: {stats['streak']} days
-    """
+    context = f"""User context - Tasks: {stats['total_tasks']}, Completed: {stats['completed_tasks']},
+    Rate: {stats['completion_rate']:.1f}%, Streak: {stats['streak']} days
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": f"You are a helpful productivity assistant. Help the user with their productivity questions and provide actionable advice. User context: {context}"},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
+    User question: {user_prompt}"""
 
-        return response.choices[0].message.content
+    response, status = call_gemini(
+        "You are a helpful productivity assistant. Provide actionable advice based on the user's stats and question.",
+        context
+    )
 
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return response if response else "Please add your Google Gemini API key to use this feature."
 
 # Authentication Page
 def show_auth_page():
@@ -2196,25 +2143,33 @@ def show_admin_panel(user_id):
 
 def show_ai_assistant(user_id):
     st.header("🤖 AI Productivity Assistant")
+    st.caption("Powered by Google Gemini")
 
-    # Check if API key is configured
-    if not st.secrets.get("OPENAI_API_KEY", None):
-        st.error("⚠️ OpenAI API Key Not Configured")
+    # Check if Gemini is configured
+    client = get_gemini_client()
+
+    if not client:
+        st.error("⚠️ Google Gemini API Key Not Configured")
         st.markdown("""
-        To use the AI Assistant, you need to configure your OpenAI API key:
+        ## Quick Setup
 
-        1. **Get an API Key**: Visit [OpenAI Platform](https://platform.openai.com/api-keys)
-        2. **Add to Secrets**: Create `.streamlit/secrets.toml` with:
+        ### Step 1: Get Your API Key
+        Visit [Google AI Studio](https://makersuite.google.com/app/apikey) and create an API key
+
+        ### Step 2: Add to Secrets
+        In your app settings → "Secrets", add:
         ```toml
-        OPENAI_API_KEY = "your-api-key-here"
+        GOOGLE_API_KEY = "your-api-key-here"
         ```
-        3. **For Streamlit Cloud**: Add the key in your app settings under "Secrets"
 
-        **Cost Estimate**: ~$0.01-0.02 per AI request. GPT-4 provides the best results.
+        ### Step 3: Save and Refresh
+        Your app will restart automatically and AI features will be ready!
         """)
         return
 
-    st.markdown("💬 **Chat with your AI productivity coach to create tasks, get insights, and plan your day!**")
+    # Show active status
+    st.success("✅ AI Assistant is active and ready!")
+    st.markdown("💬 **Create tasks with natural language, get productivity insights, and plan your day!**")
     st.markdown("---")
 
     # AI Feature Tabs
@@ -2373,21 +2328,6 @@ def show_ai_assistant(user_id):
         - Provides personalized advice
         - Helps with goal setting
         - Offers motivation and tips
-        """)
-
-    # Cost information
-    with st.expander("💰 Cost Information"):
-        st.markdown("""
-        **OpenAI GPT-4 Pricing:**
-        - Typical task creation: $0.01-0.02 per request
-        - Insights generation: $0.01-0.03 per request
-        - Chat messages: $0.005-0.02 per message
-        - **Estimated monthly cost**: $5-20 for regular use
-
-        **Tips to minimize costs:**
-        - Use task creation for multiple tasks at once
-        - Generate insights weekly instead of daily
-        - Ask clear, specific questions to get concise responses
         """)
 
 if __name__ == "__main__":
