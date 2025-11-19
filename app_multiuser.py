@@ -545,13 +545,22 @@ def call_gemini(system_prompt, user_prompt):
     client = get_gemini_client()
 
     if not client:
+        st.error("DEBUG call_gemini: client is None")
         return None, "AI not configured. Please add GOOGLE_API_KEY from https://makersuite.google.com/app/apikey"
 
     try:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        st.info(f"DEBUG call_gemini: Sending prompt (length: {len(full_prompt)})")
         response = client.generate_content(full_prompt)
-        return response.text, "success"
+        st.info(f"DEBUG call_gemini: Response received, has text: {hasattr(response, 'text')}")
+        if hasattr(response, 'text') and response.text:
+            st.success(f"DEBUG call_gemini: Response text length: {len(response.text)}")
+            return response.text, "success"
+        else:
+            st.error(f"DEBUG call_gemini: Response object: {response}")
+            return None, "No response text received"
     except Exception as e:
+        st.error(f"DEBUG call_gemini: Exception: {str(e)}")
         return None, f"Error: {str(e)}"
 
 def ai_create_tasks(user_prompt, user_id):
