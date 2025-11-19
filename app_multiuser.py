@@ -532,8 +532,8 @@ def call_gemini(system_prompt, user_prompt):
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         st.info(f"DEBUG: Sending request to Gemini API (prompt length: {len(full_prompt)})")
 
-        # Use REST API directly with v1 endpoint
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={api_key}"
+        # Use REST API directly with v1 endpoint and gemini-1.5-flash model
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
 
         headers = {
             "Content-Type": "application/json"
