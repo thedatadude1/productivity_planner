@@ -516,8 +516,9 @@ def get_gemini_client():
         return None
 
     try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
+        api_key = st.secrets.get("GOOGLE_API_KEY", None)
+    except Exception as e:
+        st.error(f"Error accessing API key from secrets: {str(e)}")
         return None
 
     if not api_key:
@@ -2150,10 +2151,28 @@ def show_ai_assistant(user_id):
     st.header("🤖 AI Productivity Assistant")
     st.caption("Powered by Google Gemini")
 
-    # Check if Gemini is configured
-    client = get_gemini_client()
+    # Check if Gemini library is available
+    if not GEMINI_AVAILABLE:
+        st.error("⚠️ Google Generative AI library not installed")
+        st.markdown("The app is redeploying. Please wait 2-3 minutes and refresh.")
+        st.info("If this persists, check that `google-generativeai>=0.3.0` is in requirements.txt")
+        return
 
-    if not client:
+    # Check if API key is configured
+    has_key = False
+    api_key = None
+
+    try:
+        # Check if secrets exist
+        if hasattr(st, 'secrets'):
+            api_key = st.secrets.get("GOOGLE_API_KEY", None)
+            if api_key:
+                has_key = True
+                st.info(f"✓ API Key detected: {api_key[:10]}...")
+    except Exception as e:
+        st.warning(f"Debug - Error accessing secrets: {str(e)}")
+
+    if not has_key:
         st.error("⚠️ Google Gemini API Key Not Configured")
         st.markdown("""
         ## Quick Setup
@@ -2170,6 +2189,13 @@ def show_ai_assistant(user_id):
         ### Step 3: Save and Refresh
         Your app will restart automatically and AI features will be ready!
         """)
+        return
+
+    # Try to initialize client
+    client = get_gemini_client()
+    if not client:
+        st.error("⚠️ Failed to initialize Google Gemini")
+        st.info("Check the error message above for details.")
         return
 
     # Show active status
