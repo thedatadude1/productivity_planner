@@ -653,6 +653,39 @@ def ai_chat_assistant(user_prompt, user_id):
 
     return response if response else "Please add your Google Gemini API key to use this feature."
 
+def show_ai_chat_widget(user_id, context_info=""):
+    """Reusable AI chat widget that can be embedded in any tab"""
+    if not GEMINI_AVAILABLE:
+        return
+
+    # Check if API key is configured
+    try:
+        if not (hasattr(st, 'secrets') and "GOOGLE_API_KEY" in st.secrets):
+            return
+    except:
+        return
+
+    with st.expander("🤖 AI Assistant", expanded=False):
+        st.caption("Ask me anything about productivity or get help with this section!")
+
+        # Chat input
+        user_question = st.text_input(
+            "Ask a question:",
+            placeholder="How can I improve my productivity? What should I focus on today?",
+            key=f"ai_chat_{context_info}",
+            label_visibility="collapsed"
+        )
+
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            ask_button = st.button("Ask", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
+
+        if ask_button and user_question:
+            with st.spinner("Thinking..."):
+                response = ai_chat_assistant(user_question, user_id)
+                st.markdown("**AI Response:**")
+                st.info(response)
+
 # Authentication Page
 def show_auth_page():
     st.markdown('<h1 class="main-header">🚀 Ultimate Productivity Planner</h1>', unsafe_allow_html=True)
@@ -1012,6 +1045,10 @@ def show_dashboard(user_id):
 
     conn.close()
 
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "dashboard")
+
 def show_tasks(user_id):
     st.header("✅ Task Management")
     tab1, tab2 = st.tabs(["📝 Add Task", "📋 View Tasks"])
@@ -1146,6 +1183,10 @@ def show_tasks(user_id):
         else:
             st.info("No tasks found. Add your first task above!")
 
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "tasks")
+
 def show_goals(user_id):
     st.header("🎯 Goal Tracking")
     tab1, tab2 = st.tabs(["➕ Add Goal", "📊 View Goals"])
@@ -1178,6 +1219,10 @@ def show_goals(user_id):
                         st.rerun()
         else:
             st.info("No goals yet. Set your first goal above!")
+
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "goals")
 
 def show_calendar(user_id):
     st.header("📅 Calendar View")
@@ -1317,6 +1362,10 @@ def show_daily_journal(user_id):
         if existing_entry.iloc[0]['tomorrow_goals']:
             st.markdown(f"**🎯 Tomorrow's Goals:** {existing_entry.iloc[0]['tomorrow_goals']}")
 
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "journal")
+
 def show_achievements_page(user_id):
     st.header("🏆 Achievements & Milestones")
     achievements = get_achievements(user_id)
@@ -1326,6 +1375,10 @@ def show_achievements_page(user_id):
             st.markdown(f'<div class="achievement-badge">{achievement["icon"]} {achievement["name"]} - {achievement["description"]}</div>', unsafe_allow_html=True)
     else:
         st.info("Complete tasks to earn achievements!")
+
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "achievements")
 
 def show_analytics(user_id):
     st.header("📈 Productivity Analytics & Insights")
@@ -1943,6 +1996,10 @@ def show_analytics(user_id):
         """)
 
     conn.close()
+
+    # AI Assistant Widget
+    st.markdown("---")
+    show_ai_chat_widget(user_id, "analytics")
 
 def show_admin_panel(user_id):
     st.header("👥 Admin Panel - User Management")
