@@ -524,8 +524,8 @@ def call_gemini(system_prompt, user_prompt):
         # Configure the SDK with the API key
         genai.configure(api_key=api_key)
 
-        # Create the model - use gemini-1.5-flash-latest which is the current model
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Create the model - use gemini-2.5-flash (latest model)
+        model = genai.GenerativeModel('gemini-2.5-flash')
 
         # Generate content
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
