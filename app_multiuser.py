@@ -533,7 +533,8 @@ def get_gemini_client():
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        # Use gemini-1.5-flash (free tier model that works with current API)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         st.success("DEBUG: Gemini client initialized successfully!")
         return model
     except Exception as e:
