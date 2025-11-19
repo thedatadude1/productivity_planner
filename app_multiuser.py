@@ -533,10 +533,20 @@ def get_gemini_client():
 
     try:
         genai.configure(api_key=api_key)
-        # Use gemini-1.5-flash (free tier model that works with current API)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        st.success("DEBUG: Gemini client initialized successfully!")
-        return model
+        # Try multiple model names in order of preference
+        model_names = ['models/gemini-pro', 'gemini-pro', 'models/gemini-1.5-flash', 'gemini-1.5-flash']
+
+        for model_name in model_names:
+            try:
+                model = genai.GenerativeModel(model_name)
+                st.success(f"DEBUG: Gemini client initialized successfully with model: {model_name}")
+                return model
+            except Exception as model_error:
+                st.warning(f"DEBUG: Failed to load {model_name}: {str(model_error)}")
+                continue
+
+        st.error("DEBUG: All model names failed")
+        return None
     except Exception as e:
         st.error(f"DEBUG: Error initializing Gemini: {str(e)}")
         return None
