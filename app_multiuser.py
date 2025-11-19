@@ -2149,24 +2149,12 @@ def show_ai_assistant(user_id):
 
     # Check if API key is configured
     has_key = False
-    api_key = None
 
-    # Debug: Show all available secret keys
     try:
-        if hasattr(st, 'secrets'):
-            available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
-            st.info(f"Debug - Available secret keys: {available_keys}")
-
-            # Try to get the API key
-            if "GOOGLE_API_KEY" in available_keys:
-                api_key = st.secrets["GOOGLE_API_KEY"]
-                if api_key:
-                    has_key = True
-                    st.success(f"✓ API Key detected: {api_key[:10]}...")
-            else:
-                st.warning("Debug - GOOGLE_API_KEY not found in secrets")
-    except Exception as e:
-        st.error(f"Debug - Error accessing secrets: {str(e)}")
+        if hasattr(st, 'secrets') and "GOOGLE_API_KEY" in st.secrets:
+            has_key = True
+    except:
+        pass
 
     if not has_key:
         st.error("⚠️ Google Gemini API Key Not Configured")
@@ -2185,13 +2173,6 @@ def show_ai_assistant(user_id):
         ### Step 3: Save and Refresh
         Your app will restart automatically and AI features will be ready!
         """)
-        return
-
-    # Try to initialize client
-    client = get_gemini_client()
-    if not client:
-        st.error("⚠️ Failed to initialize Google Gemini")
-        st.info("Check the error message above for details.")
         return
 
     # Show active status
