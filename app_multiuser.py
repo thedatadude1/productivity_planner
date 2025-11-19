@@ -11,10 +11,13 @@ import hashlib
 import os
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-import requests
 
-# Google Gemini AI - use REST API directly to avoid SDK version issues
-GEMINI_AVAILABLE = True
+# Google Gemini AI
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -507,75 +510,36 @@ def get_daily_entry(user_id, entry_date):
     return df
 
 # AI Assistant Functions
-def get_gemini_client():
-    """Get Google Gemini API key - returns API key string, not a client object"""
+def call_gemini(system_prompt, user_prompt):
+    """Call Google Gemini AI using the official SDK"""
+    if not GEMINI_AVAILABLE:
+        return None, "Google Generative AI library not available"
+
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success(f"DEBUG: API key retrieved: {api_key[:10]}...")
-        return api_key
-    except KeyError:
-        st.error("DEBUG: GOOGLE_API_KEY not found in secrets")
-        return None
-    except Exception as e:
-        st.error(f"DEBUG: Error accessing API key: {str(e)}")
-        return None
-
-def call_gemini(system_prompt, user_prompt):
-    """Call Google Gemini AI using REST API directly"""
-    api_key = get_gemini_client()
-
-    if not api_key:
-        st.error("DEBUG: No API key available")
-        return None, "AI not configured. Please add GOOGLE_API_KEY"
+    except:
+        return None, "API key not configured"
 
     try:
+        # Configure the SDK with the API key
+        genai.configure(api_key=api_key)
+
+        # Create the model - use gemini-1.5-flash-latest which is the current model
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
+        # Generate content
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        st.info(f"DEBUG: Sending request to Gemini API (prompt length: {len(full_prompt)})")
+        response = model.generate_content(full_prompt)
 
-        # Use REST API directly with v1 endpoint and gemini-1.5-flash model
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-
-        headers = {
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "contents": [{
-                "parts": [{
-                    "text": full_prompt
-                }]
-            }]
-        }
-
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        st.info(f"DEBUG: Response status: {response.status_code}")
-
-        if response.status_code == 200:
-            result = response.json()
-            st.info(f"DEBUG: Response JSON keys: {result.keys()}")
-
-            if 'candidates' in result and len(result['candidates']) > 0:
-                text = result['candidates'][0]['content']['parts'][0]['text']
-                st.success(f"DEBUG: Successfully got response (length: {len(text)})")
-                return text, "success"
-            else:
-                st.error(f"DEBUG: No candidates in response: {result}")
-                return None, "No response generated"
-        else:
-            error_msg = response.text
-            st.error(f"DEBUG: API error {response.status_code}: {error_msg}")
-            return None, f"API Error: {response.status_code}"
-
+        return response.text, "success"
     except Exception as e:
-        st.error(f"DEBUG: Exception in call_gemini: {str(e)}")
+        st.error(f"Gemini API Error: {str(e)}")
         return None, f"Error: {str(e)}"
 
 def ai_create_tasks(user_prompt, user_id):
     """Use Google Gemini AI to create tasks from natural language"""
-    api_key = get_gemini_client()
-
-    if not api_key:
-        return 0, "Please add your Google Gemini API key. Get it at: https://makersuite.google.com/app/apikey"
+    if not GEMINI_AVAILABLE:
+        return 0, "Google Generative AI library not available"
 
     system_prompt = """You are a productivity assistant. Convert user requests into structured tasks.
     Return ONLY a valid JSON object with a "tasks" key containing an array of task objects.
