@@ -513,27 +513,31 @@ def get_daily_entry(user_id, entry_date):
 def get_gemini_client():
     """Initialize Google Gemini AI client"""
     if not GEMINI_AVAILABLE:
+        st.error("DEBUG: GEMINI_AVAILABLE is False")
         return None
 
     try:
         # Use dictionary access instead of .get() method
         api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success(f"DEBUG get_gemini_client: API key retrieved: {api_key[:10]}...")
     except KeyError:
-        st.error("Error: GOOGLE_API_KEY not found in secrets")
+        st.error("DEBUG: GOOGLE_API_KEY not found in secrets (KeyError)")
         return None
     except Exception as e:
-        st.error(f"Error accessing API key from secrets: {str(e)}")
+        st.error(f"DEBUG: Error accessing API key from secrets: {str(e)}")
         return None
 
     if not api_key:
-        st.error("Error: GOOGLE_API_KEY is empty")
+        st.error("DEBUG: GOOGLE_API_KEY is empty")
         return None
 
     try:
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-pro')
+        st.success("DEBUG: Gemini client initialized successfully!")
+        return model
     except Exception as e:
-        st.error(f"Error initializing Gemini: {str(e)}")
+        st.error(f"DEBUG: Error initializing Gemini: {str(e)}")
         return None
 
 def call_gemini(system_prompt, user_prompt):
