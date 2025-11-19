@@ -515,7 +515,11 @@ def get_gemini_client():
     if not GEMINI_AVAILABLE:
         return None
 
-    api_key = st.secrets.get("GOOGLE_API_KEY", None)
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except:
+        return None
+
     if not api_key:
         return None
 
@@ -523,6 +527,7 @@ def get_gemini_client():
         genai.configure(api_key=api_key)
         return genai.GenerativeModel('gemini-pro')
     except Exception as e:
+        st.error(f"Error initializing Gemini: {str(e)}")
         return None
 
 def call_gemini(system_prompt, user_prompt):
