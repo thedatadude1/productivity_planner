@@ -516,12 +516,17 @@ def get_gemini_client():
         return None
 
     try:
-        api_key = st.secrets.get("GOOGLE_API_KEY", None)
+        # Use dictionary access instead of .get() method
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except KeyError:
+        st.error("Error: GOOGLE_API_KEY not found in secrets")
+        return None
     except Exception as e:
         st.error(f"Error accessing API key from secrets: {str(e)}")
         return None
 
     if not api_key:
+        st.error("Error: GOOGLE_API_KEY is empty")
         return None
 
     try:
