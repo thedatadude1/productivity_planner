@@ -629,7 +629,7 @@ def ai_productivity_insights(user_id):
         WHERE user_id = ?
         ORDER BY created_at DESC
         LIMIT 50
-    """, conn, params=(user_id,))
+    """), conn, params=(user_id,))
     conn.close()
 
     if tasks.empty:
@@ -657,7 +657,7 @@ def ai_daily_planner(user_id):
         WHERE user_id = ? AND status = 'pending'
         ORDER BY priority DESC, due_date ASC
         LIMIT 20
-    """, conn, params=(user_id,))
+    """), conn, params=(user_id,))
     conn.close()
 
     if pending_tasks.empty:
@@ -1070,7 +1070,7 @@ def show_dashboard(user_id):
             FROM tasks
             WHERE user_id = ? AND status != 'completed'
             GROUP BY priority
-        """, conn, params=(user_id,))
+        """), conn, params=(user_id,))
 
         if not priority_data.empty:
             priority_colors = {'high': '#e74c3c', 'medium': '#f39c12', 'low': '#2ecc71'}
@@ -1343,7 +1343,7 @@ def show_daily_journal(user_id):
         conn = db.get_connection()
         total_entries = pd.read_sql_query(db.convert_sql("""
             SELECT COUNT(*) as count FROM daily_entries WHERE user_id = ?
-        """, conn, params=(user_id,)).iloc[0]['count']
+        """), conn, params=(user_id,)).iloc[0]['count']
         conn.close()
         st.metric("Journal Entries", total_entries)
 
@@ -1503,7 +1503,7 @@ def show_analytics(user_id):
         FROM tasks
         WHERE user_id = ?
         ORDER BY created_at DESC
-    """, conn, params=(user_id,))
+    """), conn, params=(user_id,))
 
     if not all_tasks.empty:
         # Convert dates
@@ -1786,7 +1786,7 @@ def show_analytics(user_id):
         FROM daily_entries
         WHERE user_id = ?
         ORDER BY entry_date DESC
-    """, conn, params=(user_id,))
+    """), conn, params=(user_id,))
 
     if not journal_entries.empty:
         journal_entries['entry_date'] = pd.to_datetime(journal_entries['entry_date'])
@@ -2211,7 +2211,7 @@ def show_admin_panel(user_id):
                 # Re-query to get current user and verify they exist
                 current_users = pd.read_sql_query(db.convert_sql("""
                     SELECT id, username FROM users WHERE username = ?
-                """, conn, params=(username_to_delete,))
+                """), conn, params=(username_to_delete,))
 
                 if current_users.empty:
                     st.error(f"❌ User '{username_to_delete}' not found in database. They may have already been deleted.")
