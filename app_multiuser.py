@@ -665,26 +665,29 @@ def show_ai_chat_widget(user_id, context_info=""):
     except:
         return
 
-    with st.expander("🤖 AI Assistant", expanded=False):
-        st.caption("Ask me anything about productivity or get help with this section!")
+    # AI Assistant section - always visible
+    st.markdown("### 🤖 AI Assistant")
+    st.caption("Ask me anything about productivity or get help with this section!")
 
-        # Chat input
+    # Chat input
+    col1, col2 = st.columns([4, 1])
+    with col1:
         user_question = st.text_input(
             "Ask a question:",
             placeholder="How can I improve my productivity? What should I focus on today?",
             key=f"ai_chat_{context_info}",
             label_visibility="collapsed"
         )
+    with col2:
+        ask_button = st.button("Ask AI", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
 
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            ask_button = st.button("Ask", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
+    if ask_button and user_question:
+        with st.spinner("🤔 Thinking..."):
+            response = ai_chat_assistant(user_question, user_id)
+            st.markdown("**💡 AI Response:**")
+            st.info(response)
 
-        if ask_button and user_question:
-            with st.spinner("Thinking..."):
-                response = ai_chat_assistant(user_question, user_id)
-                st.markdown("**AI Response:**")
-                st.info(response)
+    st.markdown("---")
 
 # Authentication Page
 def show_auth_page():
@@ -698,6 +701,7 @@ def show_auth_page():
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
+            remember_me = st.checkbox("Remember me", value=True)
             submit = st.form_submit_button("Login")
 
             if submit:
@@ -707,6 +711,14 @@ def show_auth_page():
                     st.session_state.username = username_result
                     st.session_state.user_id = user_id
                     st.session_state.is_admin = is_admin
+                    st.session_state.remember_me = remember_me
+
+                    # Store credentials in session_state if remember me is checked
+                    if remember_me:
+                        st.session_state.stored_user_id = user_id
+                        st.session_state.stored_username = username_result
+                        st.session_state.stored_is_admin = is_admin
+
                     st.success("Login successful!")
                     st.rerun()
                 else:
@@ -736,6 +748,14 @@ def show_auth_page():
 
 # Main App (modified to use user_id)
 def main():
+    # Auto-login if remember me was checked previously
+    if not st.session_state.logged_in and 'stored_user_id' in st.session_state:
+        st.session_state.logged_in = True
+        st.session_state.user_id = st.session_state.stored_user_id
+        st.session_state.username = st.session_state.stored_username
+        st.session_state.is_admin = st.session_state.stored_is_admin
+        st.session_state.remember_me = True
+
     if not st.session_state.logged_in:
         show_auth_page()
         return
@@ -754,6 +774,15 @@ def main():
         st.session_state.username = None
         st.session_state.user_id = None
         st.session_state.is_admin = False
+        # Clear stored credentials
+        if 'stored_user_id' in st.session_state:
+            del st.session_state.stored_user_id
+        if 'stored_username' in st.session_state:
+            del st.session_state.stored_username
+        if 'stored_is_admin' in st.session_state:
+            del st.session_state.stored_is_admin
+        if 'remember_me' in st.session_state:
+            del st.session_state.remember_me
         st.rerun()
 
     st.sidebar.markdown("---")
@@ -801,6 +830,9 @@ def main():
 
 def show_dashboard(user_id):
     st.header("📊 Your Productivity Dashboard")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "dashboard")
 
     # Get data
     stats = get_productivity_stats(user_id)
@@ -1045,12 +1077,12 @@ def show_dashboard(user_id):
 
     conn.close()
 
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "dashboard")
-
 def show_tasks(user_id):
     st.header("✅ Task Management")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "tasks")
+
     tab1, tab2 = st.tabs(["📝 Add Task", "📋 View Tasks"])
 
     with tab1:
@@ -1183,12 +1215,12 @@ def show_tasks(user_id):
         else:
             st.info("No tasks found. Add your first task above!")
 
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "tasks")
-
 def show_goals(user_id):
     st.header("🎯 Goal Tracking")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "goals")
+
     tab1, tab2 = st.tabs(["➕ Add Goal", "📊 View Goals"])
 
     with tab1:
@@ -1220,10 +1252,6 @@ def show_goals(user_id):
         else:
             st.info("No goals yet. Set your first goal above!")
 
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "goals")
-
 def show_calendar(user_id):
     st.header("📅 Calendar View")
     tasks = get_tasks(user_id)
@@ -1237,6 +1265,9 @@ def show_calendar(user_id):
 
 def show_daily_journal(user_id):
     st.header("📝 Daily Journal & Reflection")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "journal")
 
     col1, col2 = st.columns([2, 1])
 
@@ -1362,12 +1393,12 @@ def show_daily_journal(user_id):
         if existing_entry.iloc[0]['tomorrow_goals']:
             st.markdown(f"**🎯 Tomorrow's Goals:** {existing_entry.iloc[0]['tomorrow_goals']}")
 
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "journal")
-
 def show_achievements_page(user_id):
     st.header("🏆 Achievements & Milestones")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "achievements")
+
     achievements = get_achievements(user_id)
 
     if not achievements.empty:
@@ -1376,12 +1407,11 @@ def show_achievements_page(user_id):
     else:
         st.info("Complete tasks to earn achievements!")
 
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "achievements")
-
 def show_analytics(user_id):
     st.header("📈 Productivity Analytics & Insights")
+
+    # AI Assistant Widget
+    show_ai_chat_widget(user_id, "analytics")
 
     # Get all data
     stats = get_productivity_stats(user_id)
@@ -1996,10 +2026,6 @@ def show_analytics(user_id):
         """)
 
     conn.close()
-
-    # AI Assistant Widget
-    st.markdown("---")
-    show_ai_chat_widget(user_id, "analytics")
 
 def show_admin_panel(user_id):
     st.header("👥 Admin Panel - User Management")
