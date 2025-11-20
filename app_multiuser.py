@@ -327,7 +327,7 @@ def add_task(user_id, title, description, category, priority, due_date, estimate
     cursor.execute(db.convert_sql("""
         INSERT INTO tasks (user_id, title, description, category, priority, due_date, estimated_hours, tags)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, title, description, category, priority, due_date, estimated_hours, json.dumps(tags)))
+    """), (user_id, title, description, category, priority, due_date, estimated_hours, json.dumps(tags)))
     conn.commit()
     conn.close()
     check_achievements(user_id)
@@ -383,7 +383,7 @@ def add_goal(user_id, title, description, target_date):
     cursor.execute(db.convert_sql("""
         INSERT INTO goals (user_id, title, description, target_date)
         VALUES (?, ?, ?, ?)
-    """, (user_id, title, description, target_date))
+    """), (user_id, title, description, target_date))
     conn.commit()
     conn.close()
 
@@ -403,7 +403,7 @@ def update_goal_progress(user_id, goal_id, progress):
     cursor.execute(db.convert_sql("""
         UPDATE goals SET progress = ?, status = ?
         WHERE id = ? AND user_id = ?
-    """, (progress, 'completed' if progress >= 100 else 'active', goal_id, user_id))
+    """), (progress, 'completed' if progress >= 100 else 'active', goal_id, user_id))
     conn.commit()
     conn.close()
     check_achievements(user_id)
@@ -529,7 +529,7 @@ def save_daily_entry(user_id, entry_date, mood, gratitude, highlights, challenge
         INSERT OR REPLACE INTO daily_entries
         (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals))
+    """), (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals))
     conn.commit()
     conn.close()
 
