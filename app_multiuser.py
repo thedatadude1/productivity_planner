@@ -73,11 +73,12 @@ if 'is_admin' not in st.session_state:
 # Database initialization
 class DatabaseManager:
     def __init__(self, db_name="productivity_planner_multiuser.db"):
-        self.db_name = db_name
+        # Use absolute path to ensure database persists
+        self.db_name = os.path.abspath(db_name)
         self.init_database()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_name, check_same_thread=False)
+        return sqlite3.connect(self.db_name, check_same_thread=False, timeout=30.0)
 
     def init_database(self):
         conn = self.get_connection()
@@ -195,70 +196,29 @@ ph = PasswordHasher()
 
 # Fireworks Effect Function
 def show_fireworks():
-    """Display a fireworks animation effect"""
-    fireworks_html = """
+    """Display a fireworks celebration effect"""
+    # Use a combination of emojis and success message for celebration
+    st.markdown("""
     <style>
-    .firework {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        width: 0.5rem;
-        height: 0.5rem;
-        border-radius: 50%;
-        animation: firework 1.5s ease-out forwards;
-        z-index: 9999;
+    @keyframes firework-burst {
+        0% { transform: scale(0) rotate(0deg); opacity: 1; }
+        50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
+        100% { transform: scale(2) rotate(360deg); opacity: 0; }
     }
-    @keyframes firework {
-        0% {
-            transform: translate(0, 0);
-            opacity: 1;
-        }
-        100% {
-            transform: translate(var(--x), var(--y));
-            opacity: 0;
-        }
+    .fireworks-celebration {
+        font-size: 3rem;
+        text-align: center;
+        animation: firework-burst 1.5s ease-out;
+        margin: 20px 0;
     }
     </style>
-    <script>
-    function createFirework() {
-        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#ff1493'];
-        const fireworksContainer = document.createElement('div');
-        document.body.appendChild(fireworksContainer);
+    <div class="fireworks-celebration">
+    🎆 🎇 ✨ 🎉 🎊 ✨ 🎇 🎆
+    </div>
+    """, unsafe_allow_html=True)
 
-        for (let i = 0; i < 5; i++) {
-            setTimeout(() => {
-                const centerX = Math.random() * window.innerWidth;
-                const centerY = Math.random() * (window.innerHeight * 0.6);
-
-                for (let j = 0; j < 30; j++) {
-                    const firework = document.createElement('div');
-                    firework.className = 'firework';
-                    firework.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                    firework.style.left = centerX + 'px';
-                    firework.style.top = centerY + 'px';
-
-                    const angle = (Math.PI * 2 * j) / 30;
-                    const velocity = 100 + Math.random() * 100;
-                    const x = Math.cos(angle) * velocity;
-                    const y = Math.sin(angle) * velocity;
-
-                    firework.style.setProperty('--x', x + 'px');
-                    firework.style.setProperty('--y', y + 'px');
-
-                    document.body.appendChild(firework);
-
-                    setTimeout(() => firework.remove(), 1500);
-                }
-            }, i * 300);
-        }
-
-        setTimeout(() => fireworksContainer.remove(), 2000);
-    }
-
-    createFirework();
-    </script>
-    """
-    st.components.v1.html(fireworks_html, height=0)
+    # Also use balloons as a reliable fallback
+    st.balloons()
 
 # Authentication Functions
 def register_user(username, password, email=""):
