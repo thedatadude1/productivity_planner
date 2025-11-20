@@ -667,25 +667,55 @@ def show_ai_chat_widget(user_id, context_info=""):
 
     # AI Assistant section - always visible
     st.markdown("### 🤖 AI Assistant")
-    st.caption("Ask me anything about productivity or get help with this section!")
 
-    # Chat input
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        user_question = st.text_input(
-            "Ask a question:",
-            placeholder="How can I improve my productivity? What should I focus on today?",
-            key=f"ai_chat_{context_info}",
-            label_visibility="collapsed"
-        )
-    with col2:
-        ask_button = st.button("Ask AI", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
+    # Special handling for Tasks tab - allow task creation
+    if context_info == "tasks":
+        st.caption("Create tasks naturally! Example: 'I need to finish the report by Friday and call the dentist tomorrow'")
 
-    if ask_button and user_question:
-        with st.spinner("🤔 Thinking..."):
-            response = ai_chat_assistant(user_question, user_id)
-            st.markdown("**💡 AI Response:**")
-            st.info(response)
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            user_input = st.text_input(
+                "Describe your tasks:",
+                placeholder="I need to finish the report by Friday and call the dentist tomorrow",
+                key=f"ai_chat_{context_info}",
+                label_visibility="collapsed"
+            )
+        with col2:
+            create_button = st.button("Create Tasks", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
+
+        if create_button and user_input:
+            with st.spinner("🤔 Creating your tasks..."):
+                num_tasks, message = ai_create_tasks(user_input, user_id)
+                if num_tasks > 0:
+                    st.success(message)
+                    st.balloons()
+                    st.info(f"✅ {num_tasks} task(s) have been added! Check the 'View Tasks' tab below.")
+                    # Auto-refresh to show new tasks
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(message)
+    else:
+        # Regular chat for other tabs
+        st.caption("Ask me anything about productivity or get help with this section!")
+
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            user_question = st.text_input(
+                "Ask a question:",
+                placeholder="How can I improve my productivity? What should I focus on today?",
+                key=f"ai_chat_{context_info}",
+                label_visibility="collapsed"
+            )
+        with col2:
+            ask_button = st.button("Ask AI", key=f"ai_ask_{context_info}", type="primary", use_container_width=True)
+
+        if ask_button and user_question:
+            with st.spinner("🤔 Thinking..."):
+                response = ai_chat_assistant(user_question, user_id)
+                st.markdown("**💡 AI Response:**")
+                st.info(response)
 
     st.markdown("---")
 
