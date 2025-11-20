@@ -106,6 +106,13 @@ class DatabaseManager:
             # Return SQLite connection
             return sqlite3.connect(self.db_name, check_same_thread=False, timeout=30.0)
 
+    def convert_sql(self, query):
+        """Convert SQL query placeholders for the current database type"""
+        if self.use_postgres:
+            # Convert ? to %s for PostgreSQL
+            return query.replace('?', '%s')
+        return query
+
     def init_database(self):
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -341,7 +348,7 @@ def register_user(username, password, email=""):
     try:
         # Hash password using Argon2
         password_hash = ph.hash(password)
-        cursor.execute("""
+        cursor.execute(db.convert_sql("""
             INSERT INTO users (username, password_hash, email)
             VALUES (?, ?, ?)
         """, (username, password_hash, email))
@@ -358,10 +365,10 @@ def login_user(username, password):
     cursor = conn.cursor()
 
     # Get user by username
-    user = pd.read_sql_query("""
+    user = pd.read_sql_query(db.convert_sql("""
         SELECT id, username, password_hash, is_admin FROM users
         WHERE username = ?
-    """, conn, params=(username,))
+    """), conn, params=(username,))
 
     if not user.empty:
         user_id = user.iloc[0]['id']
@@ -380,7 +387,7 @@ def login_user(username, password):
                 # Password is correct but using old hash format
                 # Upgrade to Argon2 automatically
                 new_hash = ph.hash(password)
-                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                cursor.execute(db.convert_sql("UPDATE users SET password_hash = ? WHERE id = ?"),
                              (new_hash, user_id))
                 conn.commit()
                 conn.close()
@@ -396,7 +403,7 @@ def login_user(username, password):
                 # Password is correct but using old hash format
                 # Upgrade to Argon2 automatically
                 new_hash = ph.hash(password)
-                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                cursor.execute(db.convert_sql("UPDATE users SET password_hash = ? WHERE id = ?"),
                              (new_hash, user_id))
                 conn.commit()
                 conn.close()
@@ -430,7 +437,7 @@ def get_daily_quote():
 def add_task(user_id, title, description, category, priority, due_date, estimated_hours, tags):
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(db.convert_sql("""
         INSERT INTO tasks (user_id, title, description, category, priority, due_date, estimated_hours, tags)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (user_id, title, description, category, priority, due_date, estimated_hours, json.dumps(tags)))
@@ -452,7 +459,7 @@ def get_tasks(user_id, status=None, category=None):
 
     query += " ORDER BY due_date ASC, priority DESC"
 
-    df = pd.read_sql_query(query, conn, params=params)
+    df = pd.read_sql_query(db.convert_sql(query), conn, params=params)
     conn.close()
     return df
 
@@ -461,15 +468,15 @@ def update_task_status(user_id, task_id, new_status):
     cursor = conn.cursor()
 
     if new_status == 'completed':
-        cursor.execute("""
+        cursor.execute(db.convert_sql("""
             UPDATE tasks SET status = ?, completed_at = CURRENT_TIMESTAMP
             WHERE id = ? AND user_id = ?
-        """, (new_status, task_id, user_id))
+        """), (new_status, task_id, user_id))
     else:
-        cursor.execute("""
+        cursor.execute(db.convert_sql("""
             UPDATE tasks SET status = ?
             WHERE id = ? AND user_id = ?
-        """, (new_status, task_id, user_id))
+        """), (new_status, task_id, user_id))
 
     conn.commit()
     conn.close()
@@ -478,7 +485,7 @@ def update_task_status(user_id, task_id, new_status):
 def delete_task(user_id, task_id):
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
+    cursor.execute(db.convert_sql("DELETE FROM tasks WHERE id = ? AND user_id = ?"), (task_id, user_id))
     conn.commit()
     conn.close()
 
@@ -486,7 +493,7 @@ def delete_task(user_id, task_id):
 def add_goal(user_id, title, description, target_date):
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(db.convert_sql("""
         INSERT INTO goals (user_id, title, description, target_date)
         VALUES (?, ?, ?, ?)
     """, (user_id, title, description, target_date))
@@ -496,7 +503,7 @@ def add_goal(user_id, title, description, target_date):
 def get_goals(user_id, status='active'):
     conn = db.get_connection()
     df = pd.read_sql_query(
-        "SELECT * FROM goals WHERE user_id = ? AND status = ? ORDER BY target_date ASC",
+        db.convert_sql("SELECT * FROM goals WHERE user_id = ? AND status = ? ORDER BY target_date ASC"),
         conn,
         params=(user_id, status)
     )
@@ -506,7 +513,7 @@ def get_goals(user_id, status='active'):
 def update_goal_progress(user_id, goal_id, progress):
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(db.convert_sql("""
         UPDATE goals SET progress = ?, status = ?
         WHERE id = ? AND user_id = ?
     """, (progress, 'completed' if progress >= 100 else 'active', goal_id, user_id))
@@ -519,25 +526,25 @@ def get_productivity_stats(user_id):
     conn = db.get_connection()
 
     total_tasks = pd.read_sql_query(
-        "SELECT COUNT(*) as count FROM tasks WHERE user_id = ?",
+        db.convert_sql("SELECT COUNT(*) as count FROM tasks WHERE user_id = ?"),
         conn, params=(user_id,)
     ).iloc[0]['count']
 
     completed_tasks = pd.read_sql_query(
-        "SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND status = 'completed'",
+        db.convert_sql("SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND status = 'completed'"),
         conn, params=(user_id,)
     ).iloc[0]['count']
 
-    week_completed = pd.read_sql_query("""
+    week_completed = pd.read_sql_query(db.convert_sql("""
         SELECT COUNT(*) as count FROM tasks
         WHERE user_id = ? AND status = 'completed'
         AND completed_at >= date('now', '-7 days')
-    """, conn, params=(user_id,)).iloc[0]['count']
+    """), conn, params=(user_id,)).iloc[0]['count']
 
     streak = calculate_streak(user_id)
 
     active_goals = pd.read_sql_query(
-        "SELECT COUNT(*) as count FROM goals WHERE user_id = ? AND status = 'active'",
+        db.convert_sql("SELECT COUNT(*) as count FROM goals WHERE user_id = ? AND status = 'active'"),
         conn, params=(user_id,)
     ).iloc[0]['count']
 
@@ -554,11 +561,11 @@ def get_productivity_stats(user_id):
 
 def calculate_streak(user_id):
     conn = db.get_connection()
-    df = pd.read_sql_query("""
+    df = pd.read_sql_query(db.convert_sql("""
         SELECT DATE(completed_at) as date FROM tasks
         WHERE user_id = ? AND status = 'completed'
         ORDER BY completed_at DESC
-    """, conn, params=(user_id,))
+    """), conn, params=(user_id,))
     conn.close()
 
     if df.empty:
@@ -598,22 +605,22 @@ def check_achievements(user_id):
 
     for threshold, name, description, icon in achievements:
         existing = pd.read_sql_query(
-            "SELECT * FROM achievements WHERE user_id = ? AND name = ?",
+            db.convert_sql("SELECT * FROM achievements WHERE user_id = ? AND name = ?"),
             conn,
             params=(user_id, name)
         )
 
         if existing.empty:
             if threshold <= 50 and stats['completed_tasks'] >= threshold:
-                cursor.execute("""
+                cursor.execute(db.convert_sql("""
                     INSERT INTO achievements (user_id, name, description, icon)
                     VALUES (?, ?, ?, ?)
-                """, (user_id, name, description, icon))
+                """), (user_id, name, description, icon))
             elif threshold > 50 and stats['streak'] >= threshold:
-                cursor.execute("""
+                cursor.execute(db.convert_sql("""
                     INSERT INTO achievements (user_id, name, description, icon)
                     VALUES (?, ?, ?, ?)
-                """, (user_id, name, description, icon))
+                """), (user_id, name, description, icon))
 
     conn.commit()
     conn.close()
@@ -621,7 +628,7 @@ def check_achievements(user_id):
 def get_achievements(user_id):
     conn = db.get_connection()
     df = pd.read_sql_query(
-        "SELECT * FROM achievements WHERE user_id = ? ORDER BY earned_at DESC",
+        db.convert_sql("SELECT * FROM achievements WHERE user_id = ? ORDER BY earned_at DESC"),
         conn, params=(user_id,)
     )
     conn.close()
@@ -631,7 +638,7 @@ def get_achievements(user_id):
 def save_daily_entry(user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals):
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(db.convert_sql("""
         INSERT OR REPLACE INTO daily_entries
         (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -642,7 +649,7 @@ def save_daily_entry(user_id, entry_date, mood, gratitude, highlights, challenge
 def get_daily_entry(user_id, entry_date):
     conn = db.get_connection()
     df = pd.read_sql_query(
-        "SELECT * FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+        db.convert_sql("SELECT * FROM daily_entries WHERE user_id = ? AND entry_date = ?"),
         conn,
         params=(user_id, entry_date)
     )
@@ -728,7 +735,7 @@ def ai_create_tasks(user_prompt, user_id):
 def ai_productivity_insights(user_id):
     """Generate AI insights using Google Gemini"""
     conn = db.get_connection()
-    tasks = pd.read_sql_query("""
+    tasks = pd.read_sql_query(db.convert_sql("""
         SELECT title, category, priority, status,
                DATE(created_at) as created, DATE(completed_at) as completed
         FROM tasks
@@ -757,7 +764,7 @@ def ai_productivity_insights(user_id):
 def ai_daily_planner(user_id):
     """AI daily planner using Google Gemini"""
     conn = db.get_connection()
-    pending_tasks = pd.read_sql_query("""
+    pending_tasks = pd.read_sql_query(db.convert_sql("""
         SELECT title, category, priority, due_date, estimated_hours
         FROM tasks
         WHERE user_id = ? AND status = 'pending'
@@ -1060,7 +1067,7 @@ def show_dashboard(user_id):
 
         # Get this week's daily completions
         week_ago = datetime.now() - timedelta(days=7)
-        weekly_tasks = pd.read_sql_query("""
+        weekly_tasks = pd.read_sql_query(db.convert_sql("""
             SELECT DATE(completed_at) as date, COUNT(*) as count
             FROM tasks
             WHERE user_id = ? AND status = 'completed' AND completed_at >= ?
@@ -1136,7 +1143,7 @@ def show_dashboard(user_id):
     with col1:
         st.subheader("🎨 Tasks by Category")
 
-        category_data = pd.read_sql_query("""
+        category_data = pd.read_sql_query(db.convert_sql("""
             SELECT category, COUNT(*) as count
             FROM tasks
             WHERE user_id = ? AND status != 'completed'
@@ -1171,7 +1178,7 @@ def show_dashboard(user_id):
     with col2:
         st.subheader("🚦 Priority Distribution")
 
-        priority_data = pd.read_sql_query("""
+        priority_data = pd.read_sql_query(db.convert_sql("""
             SELECT priority, COUNT(*) as count
             FROM tasks
             WHERE user_id = ? AND status != 'completed'
@@ -1364,7 +1371,7 @@ def show_tasks(user_id):
                                 # Update the task in database
                                 conn = db.get_connection()
                                 cursor = conn.cursor()
-                                cursor.execute("""
+                                cursor.execute(db.convert_sql("""
                                     UPDATE tasks
                                     SET title=?, description=?, category=?, priority=?,
                                         due_date=?, estimated_hours=?, status=?
@@ -1447,7 +1454,7 @@ def show_daily_journal(user_id):
     with col2:
         st.markdown("### Quick Stats")
         conn = db.get_connection()
-        total_entries = pd.read_sql_query("""
+        total_entries = pd.read_sql_query(db.convert_sql("""
             SELECT COUNT(*) as count FROM daily_entries WHERE user_id = ?
         """, conn, params=(user_id,)).iloc[0]['count']
         conn.close()
@@ -1604,7 +1611,7 @@ def show_analytics(user_id):
     st.markdown("---")
 
     # Get task data for charts
-    all_tasks = pd.read_sql_query("""
+    all_tasks = pd.read_sql_query(db.convert_sql("""
         SELECT title, category, priority, status, due_date, completed_at, created_at, estimated_hours
         FROM tasks
         WHERE user_id = ?
@@ -1887,7 +1894,7 @@ def show_analytics(user_id):
     st.markdown("---")
     st.header("🧠 Journal & Mood Analytics")
 
-    journal_entries = pd.read_sql_query("""
+    journal_entries = pd.read_sql_query(db.convert_sql("""
         SELECT entry_date, mood, gratitude, highlights, challenges
         FROM daily_entries
         WHERE user_id = ?
@@ -2315,7 +2322,7 @@ def show_admin_panel(user_id):
             if confirm_text == "DELETE":
                 # Use the SAME connection that's already open to avoid isolation issues
                 # Re-query to get current user and verify they exist
-                current_users = pd.read_sql_query("""
+                current_users = pd.read_sql_query(db.convert_sql("""
                     SELECT id, username FROM users WHERE username = ?
                 """, conn, params=(username_to_delete,))
 
@@ -2337,19 +2344,19 @@ def show_admin_panel(user_id):
                             delete_cursor.execute("PRAGMA foreign_keys = OFF")
 
                             # Delete in correct order to avoid foreign key constraints
-                            delete_cursor.execute("DELETE FROM achievements WHERE user_id = ?", (delete_user_id,))
+                            delete_cursor.execute(db.convert_sql("DELETE FROM achievements WHERE user_id = ?"), (delete_user_id,))
                             achievements_deleted = delete_cursor.rowcount
 
-                            delete_cursor.execute("DELETE FROM daily_entries WHERE user_id = ?", (delete_user_id,))
+                            delete_cursor.execute(db.convert_sql("DELETE FROM daily_entries WHERE user_id = ?"), (delete_user_id,))
                             entries_deleted = delete_cursor.rowcount
 
-                            delete_cursor.execute("DELETE FROM goals WHERE user_id = ?", (delete_user_id,))
+                            delete_cursor.execute(db.convert_sql("DELETE FROM goals WHERE user_id = ?"), (delete_user_id,))
                             goals_deleted = delete_cursor.rowcount
 
-                            delete_cursor.execute("DELETE FROM tasks WHERE user_id = ?", (delete_user_id,))
+                            delete_cursor.execute(db.convert_sql("DELETE FROM tasks WHERE user_id = ?"), (delete_user_id,))
                             tasks_deleted = delete_cursor.rowcount
 
-                            delete_cursor.execute("DELETE FROM users WHERE id = ?", (delete_user_id,))
+                            delete_cursor.execute(db.convert_sql("DELETE FROM users WHERE id = ?"), (delete_user_id,))
                             user_deleted = delete_cursor.rowcount
 
                             conn.commit()
