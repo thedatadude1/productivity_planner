@@ -551,9 +551,11 @@ def ai_create_tasks(user_prompt, user_id):
     """
 
     try:
-        full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
-        response = client.generate_content(full_prompt)
-        response_text = response.text
+        # Use the call_gemini function
+        response_text, status = call_gemini(system_prompt, user_prompt)
+
+        if not response_text or status != "success":
+            return 0, "Failed to get AI response"
 
         # Parse JSON from response - Gemini sometimes wraps in markdown
         if "```json" in response_text:
