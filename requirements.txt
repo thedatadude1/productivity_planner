@@ -3,3 +3,5 @@ pandas>=2.0.0
 plotly>=5.18.0
 argon2-cffi>=23.1.0
 google-generativeai
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0

@@ -12,6 +12,14 @@ import os
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
+# PostgreSQL imports
+try:
+    import psycopg2
+    from sqlalchemy import create_engine
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
 # Google Gemini AI
 try:
     import google.generativeai as genai
@@ -73,103 +81,205 @@ if 'is_admin' not in st.session_state:
 # Database initialization
 class DatabaseManager:
     def __init__(self, db_name="productivity_planner_multiuser.db"):
-        # Use absolute path to ensure database persists
-        self.db_name = os.path.abspath(db_name)
+        # Check if PostgreSQL DATABASE_URL is available
+        self.use_postgres = False
+        self.database_url = None
+
+        try:
+            if hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
+                self.database_url = st.secrets["DATABASE_URL"]
+                self.use_postgres = True and POSTGRES_AVAILABLE
+        except:
+            pass
+
+        if not self.use_postgres:
+            # Use SQLite for local development
+            self.db_name = os.path.abspath(db_name)
+
         self.init_database()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_name, check_same_thread=False, timeout=30.0)
+        if self.use_postgres:
+            # Return PostgreSQL connection
+            return psycopg2.connect(self.database_url)
+        else:
+            # Return SQLite connection
+            return sqlite3.connect(self.db_name, check_same_thread=False, timeout=30.0)
 
     def init_database(self):
         conn = self.get_connection()
         cursor = conn.cursor()
 
+        # SQL syntax differs between SQLite and PostgreSQL
+        if self.use_postgres:
+            serial_type = "SERIAL PRIMARY KEY"
+            autoincrement = ""
+        else:
+            serial_type = "INTEGER PRIMARY KEY"
+            autoincrement = "AUTOINCREMENT"
+
         # Users table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                email TEXT,
-                is_admin INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        if self.use_postgres:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS users (
+                    id {serial_type},
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    email TEXT,
+                    is_admin INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS users (
+                    id {serial_type} {autoincrement},
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    email TEXT,
+                    is_admin INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
         # Tasks table with user_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                category TEXT,
-                priority TEXT,
-                status TEXT DEFAULT 'pending',
-                due_date DATE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
-                estimated_hours REAL,
-                tags TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
+        if self.use_postgres:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id {serial_type},
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT,
+                    priority TEXT,
+                    status TEXT DEFAULT 'pending',
+                    due_date DATE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    estimated_hours REAL,
+                    tags TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+        else:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id {serial_type} {autoincrement},
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT,
+                    priority TEXT,
+                    status TEXT DEFAULT 'pending',
+                    due_date DATE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    estimated_hours REAL,
+                    tags TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
 
         # Goals table with user_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS goals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                target_date DATE,
-                progress INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
+        if self.use_postgres:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id {serial_type},
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    target_date DATE,
+                    progress INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+        else:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id {serial_type} {autoincrement},
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    target_date DATE,
+                    progress INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
 
         # Daily entries table with user_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS daily_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                entry_date DATE,
-                mood INTEGER,
-                gratitude TEXT,
-                highlights TEXT,
-                challenges TEXT,
-                tomorrow_goals TEXT,
-                UNIQUE(user_id, entry_date),
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
+        if self.use_postgres:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS daily_entries (
+                    id {serial_type},
+                    user_id INTEGER NOT NULL,
+                    entry_date DATE,
+                    mood INTEGER,
+                    gratitude TEXT,
+                    highlights TEXT,
+                    challenges TEXT,
+                    tomorrow_goals TEXT,
+                    UNIQUE(user_id, entry_date),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+        else:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS daily_entries (
+                    id {serial_type} {autoincrement},
+                    user_id INTEGER NOT NULL,
+                    entry_date DATE,
+                    mood INTEGER,
+                    gratitude TEXT,
+                    highlights TEXT,
+                    challenges TEXT,
+                    tomorrow_goals TEXT,
+                    UNIQUE(user_id, entry_date),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
 
         # Achievements table with user_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS achievements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT,
-                earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                icon TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
+        if self.use_postgres:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id {serial_type},
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    icon TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+        else:
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id {serial_type} {autoincrement},
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    icon TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
 
-        # Migrate existing databases: add is_admin column if it doesn't exist
-        try:
-            cursor.execute("SELECT is_admin FROM users LIMIT 1")
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
-            # Create admin account if username 'thedatadude' exists
-            cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
-            admin_user = cursor.fetchone()
-            if admin_user:
-                cursor.execute("UPDATE users SET is_admin = 1 WHERE username = 'thedatadude'")
+        # Migrate existing databases: add is_admin column if it doesn't exist (SQLite only)
+        if not self.use_postgres:
+            try:
+                cursor.execute("SELECT is_admin FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+                # Create admin account if username 'thedatadude' exists
+                cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
+                admin_user = cursor.fetchone()
+                if admin_user:
+                    cursor.execute("UPDATE users SET is_admin = 1 WHERE username = 'thedatadude'")
 
         # Ensure admin account exists (for first-time setup on cloud)
         cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
