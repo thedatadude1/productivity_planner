@@ -290,9 +290,12 @@ class DatabaseManager:
             from argon2 import PasswordHasher
             ph_init = PasswordHasher()
             admin_hash = ph_init.hash("Jacobm1313!")
-            cursor.execute("""
+
+            # Use correct parameter placeholder based on database type
+            placeholder = "%s" if self.use_postgres else "?"
+            cursor.execute(f"""
                 INSERT INTO users (username, password_hash, email, is_admin)
-                VALUES ('thedatadude', ?, 'admin@productivity.app', 1)
+                VALUES ('thedatadude', {placeholder}, 'admin@productivity.app', 1)
             """, (admin_hash,))
 
         conn.commit()
