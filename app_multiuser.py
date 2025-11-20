@@ -193,6 +193,73 @@ db = DatabaseManager()
 # Initialize Argon2 password hasher
 ph = PasswordHasher()
 
+# Fireworks Effect Function
+def show_fireworks():
+    """Display a fireworks animation effect"""
+    fireworks_html = """
+    <style>
+    .firework {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        animation: firework 1.5s ease-out forwards;
+        z-index: 9999;
+    }
+    @keyframes firework {
+        0% {
+            transform: translate(0, 0);
+            opacity: 1;
+        }
+        100% {
+            transform: translate(var(--x), var(--y));
+            opacity: 0;
+        }
+    }
+    </style>
+    <script>
+    function createFirework() {
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#ff1493'];
+        const fireworksContainer = document.createElement('div');
+        document.body.appendChild(fireworksContainer);
+
+        for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+                const centerX = Math.random() * window.innerWidth;
+                const centerY = Math.random() * (window.innerHeight * 0.6);
+
+                for (let j = 0; j < 30; j++) {
+                    const firework = document.createElement('div');
+                    firework.className = 'firework';
+                    firework.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    firework.style.left = centerX + 'px';
+                    firework.style.top = centerY + 'px';
+
+                    const angle = (Math.PI * 2 * j) / 30;
+                    const velocity = 100 + Math.random() * 100;
+                    const x = Math.cos(angle) * velocity;
+                    const y = Math.sin(angle) * velocity;
+
+                    firework.style.setProperty('--x', x + 'px');
+                    firework.style.setProperty('--y', y + 'px');
+
+                    document.body.appendChild(firework);
+
+                    setTimeout(() => firework.remove(), 1500);
+                }
+            }, i * 300);
+        }
+
+        setTimeout(() => fireworksContainer.remove(), 2000);
+    }
+
+    createFirework();
+    </script>
+    """
+    st.components.v1.html(fireworks_html, height=0)
+
 # Authentication Functions
 def register_user(username, password, email=""):
     """Register a new user with Argon2 password hashing"""
@@ -690,11 +757,11 @@ def show_ai_chat_widget(user_id, context_info=""):
                 num_tasks, message = ai_create_tasks(user_input, user_id)
                 if num_tasks > 0:
                     st.success(message)
-                    st.balloons()
+                    show_fireworks()
                     st.info(f"✅ {num_tasks} task(s) have been added! Check the 'View Tasks' tab below.")
                     # Auto-refresh to show new tasks
                     import time
-                    time.sleep(1)
+                    time.sleep(2)
                     st.rerun()
                 else:
                     st.error(message)
@@ -1086,10 +1153,9 @@ def show_dashboard(user_id):
                         if st.button("✓", key=f"complete_dash_{task['id']}"):
                             update_task_status(user_id, task['id'], 'completed')
                             st.success("🎉 Task Completed!")
-                            st.balloons()
-                            st.snow()
+                            show_fireworks()
                             import time
-                            time.sleep(1.5)
+                            time.sleep(2)
                             st.rerun()
             else:
                 st.success("🎉 No urgent tasks! You're doing great!")
@@ -1136,10 +1202,10 @@ def show_tasks(user_id):
                 tags = [tag.strip() for tag in tags_input.split(",")] if tags_input else []
                 add_task(user_id, title, description, category, priority, due_date.strftime("%Y-%m-%d"), estimated_hours, tags)
                 st.success(f"✅ **Task Added!** '{title}' has been successfully added to your task list.")
-                st.balloons()
+                show_fireworks()
                 st.info("Redirecting to task list...")
                 import time
-                time.sleep(1.5)
+                time.sleep(2)
                 st.rerun()
             elif submitted and not title:
                 st.error("❌ Please enter a task title!")
@@ -1172,8 +1238,7 @@ def show_tasks(user_id):
                             if st.button("✓ Complete", key=f"complete_{task['id']}"):
                                 update_task_status(user_id, task['id'], 'completed')
                                 st.success(f"🎉 **Task Completed!** Great job on '{task['title']}'!")
-                                st.balloons()
-                                st.snow()
+                                show_fireworks()
                                 import time
                                 time.sleep(2)
                                 st.rerun()
@@ -1404,7 +1469,7 @@ def show_daily_journal(user_id):
         if submitted:
             save_daily_entry(user_id, entry_date_str, mood_selection, gratitude, highlights, challenges, tomorrow_goals)
             st.success("✅ Journal entry saved successfully!")
-            st.balloons()
+            show_fireworks()
 
     # Show recent entries
     if not existing_entry.empty:
@@ -2220,7 +2285,7 @@ def show_admin_panel(user_id):
 
                             if user_deleted > 0:
                                 st.success(f"✅ Successfully deleted user '{username_to_delete}'!")
-                                st.balloons()
+                                show_fireworks()
                                 st.info("Refreshing page in 2 seconds...")
                                 import time
                                 time.sleep(2)
@@ -2354,7 +2419,7 @@ def show_ai_assistant(user_id):
                     num_tasks, message = ai_create_tasks(user_input, user_id)
                     if num_tasks > 0:
                         st.success(message)
-                        st.balloons()
+                        show_fireworks()
                         st.markdown(f"**{num_tasks} task(s) have been added to your task list!**")
                         st.info("Go to the Tasks tab to view and manage them.")
                     else:
