@@ -961,13 +961,15 @@ def show_dashboard(user_id):
 
         # Get this week's daily completions
         week_ago = datetime.now() - timedelta(days=7)
-        weekly_tasks = pd.read_sql_query(db.convert_sql("""
+        week_ago_str = week_ago.strftime("%Y-%m-%d")
+        weekly_query = db.convert_sql("""
             SELECT DATE(completed_at) as date, COUNT(*) as count
             FROM tasks
             WHERE user_id = ? AND status = 'completed' AND completed_at >= ?
             GROUP BY DATE(completed_at)
             ORDER BY date
-        """), conn, params=[user_id, week_ago.strftime("%Y-%m-%d"]))
+        """)
+        weekly_tasks = pd.read_sql_query(weekly_query, conn, params=[user_id, week_ago_str])
 
         if not weekly_tasks.empty:
             fig_week = px.bar(
