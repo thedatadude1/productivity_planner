@@ -126,7 +126,7 @@ class DatabaseManager:
                 due_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP,
-                estimated_hours REAL,
+                estimated_hours DOUBLE PRECISION,
                 tags TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
@@ -255,7 +255,7 @@ def login_user(username, password):
     user = pd.read_sql_query(db.convert_sql("""
         SELECT id, username, password_hash, is_admin FROM users
         WHERE username = ?
-    """), conn, params=(username,))
+    """), conn, params=[username,])
 
     if not user.empty:
         user_id = user.iloc[0]['id']
@@ -392,7 +392,7 @@ def get_goals(user_id, status='active'):
     df = pd.read_sql_query(
         db.convert_sql("SELECT * FROM goals WHERE user_id = ? AND status = ? ORDER BY target_date ASC"),
         conn,
-        params=(user_id, status)
+        params=[user_id, status]
     )
     conn.close()
     return df
@@ -414,25 +414,25 @@ def get_productivity_stats(user_id):
 
     total_tasks = pd.read_sql_query(
         db.convert_sql("SELECT COUNT(*) as count FROM tasks WHERE user_id = ?"),
-        conn, params=(user_id,)
+        conn, params=[user_id]
     ).iloc[0]['count']
 
     completed_tasks = pd.read_sql_query(
         db.convert_sql("SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND status = 'completed'"),
-        conn, params=(user_id,)
+        conn, params=[user_id]
     ).iloc[0]['count']
 
     week_completed = pd.read_sql_query(db.convert_sql("""
         SELECT COUNT(*) as count FROM tasks
         WHERE user_id = ? AND status = 'completed'
         AND completed_at >= CURRENT_DATE - INTERVAL '7 days'
-    """), conn, params=(user_id,)).iloc[0]['count']
+    """), conn, params=[user_id]).iloc[0]['count']
 
     streak = calculate_streak(user_id)
 
     active_goals = pd.read_sql_query(
         db.convert_sql("SELECT COUNT(*) as count FROM goals WHERE user_id = ? AND status = 'active'"),
-        conn, params=(user_id,)
+        conn, params=[user_id]
     ).iloc[0]['count']
 
     conn.close()
@@ -452,7 +452,7 @@ def calculate_streak(user_id):
         SELECT DATE(completed_at) as date FROM tasks
         WHERE user_id = ? AND status = 'completed'
         ORDER BY completed_at DESC
-    """), conn, params=(user_id,))
+    """), conn, params=[user_id,])
     conn.close()
 
     if df.empty:
@@ -494,7 +494,7 @@ def check_achievements(user_id):
         existing = pd.read_sql_query(
             db.convert_sql("SELECT * FROM achievements WHERE user_id = ? AND name = ?"),
             conn,
-            params=(user_id, name)
+            params=[user_id, name]
         )
 
         if existing.empty:
@@ -516,7 +516,7 @@ def get_achievements(user_id):
     conn = db.get_connection()
     df = pd.read_sql_query(
         db.convert_sql("SELECT * FROM achievements WHERE user_id = ? ORDER BY earned_at DESC"),
-        conn, params=(user_id,)
+        conn, params=[user_id,]
     )
     conn.close()
     return df
@@ -544,7 +544,7 @@ def get_daily_entry(user_id, entry_date):
     df = pd.read_sql_query(
         db.convert_sql("SELECT * FROM daily_entries WHERE user_id = ? AND entry_date = ?"),
         conn,
-        params=(user_id, entry_date)
+        params=[user_id, entry_date]
     )
     conn.close()
     return df
@@ -635,7 +635,7 @@ def ai_productivity_insights(user_id):
         WHERE user_id = ?
         ORDER BY created_at DESC
         LIMIT 50
-    """), conn, params=(user_id,))
+    """), conn, params=[user_id,])
     conn.close()
 
     if tasks.empty:
@@ -663,7 +663,7 @@ def ai_daily_planner(user_id):
         WHERE user_id = ? AND status = 'pending'
         ORDER BY priority DESC, due_date ASC
         LIMIT 20
-    """), conn, params=(user_id,))
+    """), conn, params=[user_id,])
     conn.close()
 
     if pending_tasks.empty:
@@ -966,7 +966,7 @@ def show_dashboard(user_id):
             WHERE user_id = ? AND status = 'completed' AND completed_at >= ?
             GROUP BY DATE(completed_at)
             ORDER BY date
-        """), conn, params=(user_id, week_ago.strftime("%Y-%m-%d")))
+        """), conn, params=[user_id, week_ago.strftime("%Y-%m-%d"]))
 
         if not weekly_tasks.empty:
             fig_week = px.bar(
@@ -1042,7 +1042,7 @@ def show_dashboard(user_id):
             WHERE user_id = ? AND status != 'completed'
             GROUP BY category
             ORDER BY count DESC
-        """), conn, params=(user_id,))
+        """), conn, params=[user_id,])
 
         if not category_data.empty:
             fig_category = px.bar(
@@ -1076,7 +1076,7 @@ def show_dashboard(user_id):
             FROM tasks
             WHERE user_id = ? AND status != 'completed'
             GROUP BY priority
-        """), conn, params=(user_id,))
+        """), conn, params=[user_id,])
 
         if not priority_data.empty:
             priority_colors = {'high': '#e74c3c', 'medium': '#f39c12', 'low': '#2ecc71'}
@@ -1349,7 +1349,7 @@ def show_daily_journal(user_id):
         conn = db.get_connection()
         total_entries = pd.read_sql_query(db.convert_sql("""
             SELECT COUNT(*) as count FROM daily_entries WHERE user_id = ?
-        """), conn, params=(user_id,)).iloc[0]['count']
+        """), conn, params=[user_id,]).iloc[0]['count']
         conn.close()
         st.metric("Journal Entries", total_entries)
 
@@ -1509,7 +1509,7 @@ def show_analytics(user_id):
         FROM tasks
         WHERE user_id = ?
         ORDER BY created_at DESC
-    """), conn, params=(user_id,))
+    """), conn, params=[user_id,])
 
     if not all_tasks.empty:
         # Convert dates
@@ -1792,7 +1792,7 @@ def show_analytics(user_id):
         FROM daily_entries
         WHERE user_id = ?
         ORDER BY entry_date DESC
-    """), conn, params=(user_id,))
+    """), conn, params=[user_id,])
 
     if not journal_entries.empty:
         journal_entries['entry_date'] = pd.to_datetime(journal_entries['entry_date'])
@@ -2217,7 +2217,7 @@ def show_admin_panel(user_id):
                 # Re-query to get current user and verify they exist
                 current_users = pd.read_sql_query(db.convert_sql("""
                     SELECT id, username FROM users WHERE username = ?
-                """), conn, params=(username_to_delete,))
+                """), conn, params=[username_to_delete,])
 
                 if current_users.empty:
                     st.error(f"❌ User '{username_to_delete}' not found in database. They may have already been deleted.")
