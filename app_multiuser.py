@@ -201,35 +201,45 @@ db = DatabaseManager()
 # Initialize Argon2 password hasher
 ph = PasswordHasher()
 
-# Import streamlit-extras for rain effect
-try:
-    from streamlit_extras.let_it_rain import rain
-    RAIN_AVAILABLE = True
-except ImportError:
-    RAIN_AVAILABLE = False
-
-# Celebration Effect Function (replaces fireworks)
+# Celebration Effect Function - Custom rain with GIF
 def show_celebration():
-    """Display a celebration rain effect with custom emoji"""
-    if RAIN_AVAILABLE:
-        rain(
-            emoji="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif",
-            font_size=54,
-            falling_speed=5,
-            animation_length=1,
-        )
-    else:
-        # Fallback if streamlit-extras not available
-        st.success("🎉 Task Completed!")
-
-# Task Added Notification
-def show_task_added():
-    """Display a green text box for 3 seconds when task is added"""
-    import time
-    placeholder = st.empty()
-    placeholder.success("✅ Task Added!")
-    time.sleep(3)
-    placeholder.empty()
+    """Display a celebration rain effect with custom GIF image"""
+    # Custom CSS animation to rain the celebration GIF
+    st.markdown("""
+    <style>
+    @keyframes fall {
+        0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+    }
+    .rain-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9999;
+        overflow: hidden;
+    }
+    .rain-drop {
+        position: absolute;
+        top: -50px;
+        animation: fall linear forwards;
+    }
+    </style>
+    <div class="rain-container">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 5%; animation-duration: 2s; width: 40px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 15%; animation-duration: 2.3s; animation-delay: 0.2s; width: 35px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 25%; animation-duration: 1.8s; animation-delay: 0.4s; width: 45px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 35%; animation-duration: 2.5s; animation-delay: 0.1s; width: 38px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 45%; animation-duration: 2.1s; animation-delay: 0.3s; width: 42px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 55%; animation-duration: 1.9s; animation-delay: 0.5s; width: 36px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 65%; animation-duration: 2.4s; animation-delay: 0.15s; width: 44px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 75%; animation-duration: 2.0s; animation-delay: 0.35s; width: 40px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 85%; animation-duration: 2.2s; animation-delay: 0.25s; width: 38px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 95%; animation-duration: 1.7s; animation-delay: 0.45s; width: 42px;">
+    </div>
+    """, unsafe_allow_html=True)
 
 # Authentication Functions
 def register_user(username, password, email=""):
