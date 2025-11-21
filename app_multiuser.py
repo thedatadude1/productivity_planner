@@ -228,16 +228,16 @@ def show_celebration():
     }
     </style>
     <div class="rain-container">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 5%; animation-duration: 2s; width: 40px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 15%; animation-duration: 2.3s; animation-delay: 0.2s; width: 35px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 25%; animation-duration: 1.8s; animation-delay: 0.4s; width: 45px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 35%; animation-duration: 2.5s; animation-delay: 0.1s; width: 38px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 45%; animation-duration: 2.1s; animation-delay: 0.3s; width: 42px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 55%; animation-duration: 1.9s; animation-delay: 0.5s; width: 36px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 65%; animation-duration: 2.4s; animation-delay: 0.15s; width: 44px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 75%; animation-duration: 2.0s; animation-delay: 0.35s; width: 40px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 85%; animation-duration: 2.2s; animation-delay: 0.25s; width: 38px;">
-        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 95%; animation-duration: 1.7s; animation-delay: 0.45s; width: 42px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 5%; animation-duration: 4s; width: 40px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 15%; animation-duration: 4.3s; animation-delay: 0.4s; width: 35px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 25%; animation-duration: 3.6s; animation-delay: 0.8s; width: 45px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 35%; animation-duration: 4.5s; animation-delay: 0.2s; width: 38px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 45%; animation-duration: 4.1s; animation-delay: 0.6s; width: 42px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 55%; animation-duration: 3.8s; animation-delay: 1.0s; width: 36px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 65%; animation-duration: 4.4s; animation-delay: 0.3s; width: 44px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 75%; animation-duration: 4.0s; animation-delay: 0.7s; width: 40px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 85%; animation-duration: 4.2s; animation-delay: 0.5s; width: 38px;">
+        <img src="https://emoji.slack-edge.com/T13E00KGD/celebrate/e68ee2ab5d5e39b8.gif" class="rain-drop" style="left: 95%; animation-duration: 3.4s; animation-delay: 0.9s; width: 42px;">
     </div>
     """, unsafe_allow_html=True)
 
@@ -500,33 +500,47 @@ def check_achievements(user_id):
 
     stats = get_productivity_stats(user_id)
 
-    achievements = [
+    # Task-based achievements (threshold, name, description, icon)
+    task_achievements = [
         (5, "First Steps", "Completed 5 tasks", "🌱"),
         (25, "Getting Started", "Completed 25 tasks", "🚀"),
         (50, "Halfway Hero", "Completed 50 tasks", "⭐"),
         (100, "Century Club", "Completed 100 tasks", "💯"),
+    ]
+
+    # Streak-based achievements
+    streak_achievements = [
         (7, "Week Warrior", "7-day streak", "🔥"),
         (30, "Monthly Master", "30-day streak", "👑"),
     ]
 
-    for threshold, name, description, icon in achievements:
+    # Check task-based achievements
+    for threshold, name, description, icon in task_achievements:
         existing = pd.read_sql_query(
             db.convert_sql("SELECT * FROM achievements WHERE user_id = ? AND name = ?"),
             conn,
             params=[user_id, name]
         )
 
-        if existing.empty:
-            if threshold <= 50 and stats['completed_tasks'] >= threshold:
-                cursor.execute(db.convert_sql("""
-                    INSERT INTO achievements (user_id, name, description, icon)
-                    VALUES (?, ?, ?, ?)
-                """), (user_id, name, description, icon))
-            elif threshold > 50 and stats['streak'] >= threshold:
-                cursor.execute(db.convert_sql("""
-                    INSERT INTO achievements (user_id, name, description, icon)
-                    VALUES (?, ?, ?, ?)
-                """), (user_id, name, description, icon))
+        if existing.empty and stats['completed_tasks'] >= threshold:
+            cursor.execute(db.convert_sql("""
+                INSERT INTO achievements (user_id, name, description, icon)
+                VALUES (?, ?, ?, ?)
+            """), (user_id, name, description, icon))
+
+    # Check streak-based achievements
+    for threshold, name, description, icon in streak_achievements:
+        existing = pd.read_sql_query(
+            db.convert_sql("SELECT * FROM achievements WHERE user_id = ? AND name = ?"),
+            conn,
+            params=[user_id, name]
+        )
+
+        if existing.empty and stats['streak'] >= threshold:
+            cursor.execute(db.convert_sql("""
+                INSERT INTO achievements (user_id, name, description, icon)
+                VALUES (?, ?, ?, ?)
+            """), (user_id, name, description, icon))
 
     conn.commit()
     conn.close()
@@ -1513,7 +1527,7 @@ def show_analytics(user_id):
         st.metric("Completion Rate", f"{stats['completion_rate']:.1f}%",
                  delta="Outstanding!" if stats['completion_rate'] >= 80 else "Keep going!")
     with col3:
-        st.metric("Tasks This Week", stats['week_completed'])
+        st.metric("Tasks Completed This Week", stats['week_completed'])
     with col4:
         st.metric("Current Streak", f"{stats['streak']} days",
                  delta="🔥" if stats['streak'] > 0 else None)
