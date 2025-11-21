@@ -960,7 +960,7 @@ def show_dashboard(user_id):
             WHERE user_id = ? AND status = 'completed' AND completed_at >= ?
             GROUP BY DATE(completed_at)
             ORDER BY date
-        """, conn, params=(user_id, week_ago.strftime("%Y-%m-%d")))
+        """), conn, params=(user_id, week_ago.strftime("%Y-%m-%d")))
 
         if not weekly_tasks.empty:
             fig_week = px.bar(
@@ -1036,7 +1036,7 @@ def show_dashboard(user_id):
             WHERE user_id = ? AND status != 'completed'
             GROUP BY category
             ORDER BY count DESC
-        """, conn, params=(user_id,))
+        """), conn, params=(user_id,))
 
         if not category_data.empty:
             fig_category = px.bar(
@@ -1263,9 +1263,9 @@ def show_tasks(user_id):
                                     SET title=?, description=?, category=?, priority=?,
                                         due_date=?, estimated_hours=?, status=?
                                     WHERE id=? AND user_id=?
-                                """, (edit_title, edit_description, edit_category, edit_priority,
-                                      edit_due_date.strftime("%Y-%m-%d"), edit_estimated_hours,
-                                      edit_status, task['id'], user_id))
+                                """), (edit_title, edit_description, edit_category, edit_priority,
+                                       edit_due_date.strftime("%Y-%m-%d"), edit_estimated_hours,
+                                       edit_status, task['id'], user_id))
                                 conn.commit()
                                 conn.close()
 
