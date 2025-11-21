@@ -462,8 +462,12 @@ def calculate_streak(user_id):
     streak = 0
     current_date = datetime.now().date()
 
-    for date_str in df['date'].unique():
-        task_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    for date_val in df['date'].unique():
+        # Handle both date objects (PostgreSQL) and strings (SQLite)
+        if isinstance(date_val, str):
+            task_date = datetime.strptime(date_val, '%Y-%m-%d').date()
+        else:
+            task_date = date_val if hasattr(date_val, 'year') else date_val.date()
         if task_date == current_date:
             streak += 1
             current_date -= timedelta(days=1)
