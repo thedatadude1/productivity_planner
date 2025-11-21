@@ -425,7 +425,7 @@ def get_productivity_stats(user_id):
     week_completed = pd.read_sql_query(db.convert_sql("""
         SELECT COUNT(*) as count FROM tasks
         WHERE user_id = ? AND status = 'completed'
-        AND completed_at >= date('now', '-7 days')
+        AND completed_at >= CURRENT_DATE - INTERVAL '7 days'
     """), conn, params=(user_id,)).iloc[0]['count']
 
     streak = calculate_streak(user_id)
@@ -526,9 +526,15 @@ def save_daily_entry(user_id, entry_date, mood, gratitude, highlights, challenge
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute(db.convert_sql("""
-        INSERT OR REPLACE INTO daily_entries
+        INSERT INTO daily_entries
         (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals)
         VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (user_id, entry_date)
+        DO UPDATE SET mood = EXCLUDED.mood,
+                      gratitude = EXCLUDED.gratitude,
+                      highlights = EXCLUDED.highlights,
+                      challenges = EXCLUDED.challenges,
+                      tomorrow_goals = EXCLUDED.tomorrow_goals
     """), (user_id, entry_date, mood, gratitude, highlights, challenges, tomorrow_goals))
     conn.commit()
     conn.close()
