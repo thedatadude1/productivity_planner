@@ -259,7 +259,7 @@ def login_user(username, password):
     """), conn, params=[username])
 
     if not user.empty:
-        user_id = user.iloc[0]['id']
+        user_id = int(user.iloc[0]['id'])  # Convert numpy.int64 to Python int
         stored_hash = user.iloc[0]['password_hash']
         is_admin = bool(user.iloc[0]['is_admin'])
 
@@ -2226,7 +2226,7 @@ def show_admin_panel(user_id):
                     st.error(f"❌ User '{username_to_delete}' not found in database. They may have already been deleted.")
                     st.info("Please refresh the page to see the current user list.")
                 else:
-                    delete_user_id = current_users.iloc[0]['id']
+                    delete_user_id = int(current_users.iloc[0]['id'])  # Convert numpy.int64 to Python int
 
                     # Prevent self-deletion
                     if delete_user_id == user_id:
