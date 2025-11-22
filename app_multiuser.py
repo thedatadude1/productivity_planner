@@ -2199,91 +2199,240 @@ def show_admin_panel(user_id):
 
     st.info("📊 View all registered users and database statistics")
 
-    # Check if running on Streamlit Cloud
-    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud':
-        st.warning("⚠️ **Streamlit Cloud Limitation**: User deletion may not work on Streamlit Community Cloud due to ephemeral filesystem. For full admin functionality, consider running locally or using a PostgreSQL database.")
-
     conn = db.get_connection()
+    cursor = conn.cursor()
 
-    # Get all users
-    users = pd.read_sql_query("""
-        SELECT id, username, email, created_at
-        FROM users
-        ORDER BY created_at DESC
-    """, conn)
+    # Database Info Tab Section
+    tab1, tab2, tab3 = st.tabs(["👥 Users", "🗄️ Database Info", "⚠️ Danger Zone"])
 
-    # Display user count
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Users", len(users))
-    with col2:
-        total_tasks = pd.read_sql_query("SELECT COUNT(*) as count FROM tasks", conn).iloc[0]['count']
-        st.metric("Total Tasks", total_tasks)
-    with col3:
-        total_goals = pd.read_sql_query("SELECT COUNT(*) as count FROM goals", conn).iloc[0]['count']
-        st.metric("Total Goals", total_goals)
+    with tab2:
+        st.subheader("🐘 Neon PostgreSQL Database Information")
 
-    st.markdown("---")
+        # Get PostgreSQL version
+        cursor.execute("SELECT version()")
+        pg_version = cursor.fetchone()[0]
 
-    # Display users table
-    st.subheader("📋 Registered Users")
+        # Get database name and size
+        cursor.execute("SELECT current_database()")
+        db_name = cursor.fetchone()[0]
 
-    if not users.empty:
-        # Format the dataframe for display
-        display_df = users.copy()
-        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        cursor.execute("SELECT pg_size_pretty(pg_database_size(current_database()))")
+        db_size = cursor.fetchone()[0]
 
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "id": "User ID",
-                "username": "Username",
-                "email": "Email",
-                "created_at": "Registered On"
-            }
-        )
+        # Get connection info
+        cursor.execute("SELECT inet_server_addr(), inet_server_port()")
+        server_info = cursor.fetchone()
+
+        # Display database connection info
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Database Name", db_name)
+        with col2:
+            st.metric("Database Size", db_size)
+        with col3:
+            st.metric("Server Port", server_info[1] if server_info[1] else "N/A")
 
         st.markdown("---")
 
-        # User statistics
-        st.subheader("📊 User Activity Statistics")
+        # PostgreSQL version
+        st.markdown("**PostgreSQL Version:**")
+        st.code(pg_version, language=None)
 
-        user_stats = pd.read_sql_query("""
+        st.markdown("---")
+
+        # Table statistics
+        st.subheader("📊 Table Statistics")
+
+        table_stats = pd.read_sql_query("""
             SELECT
-                u.username,
-                COUNT(DISTINCT t.id) as total_tasks,
-                COUNT(DISTINCT CASE WHEN t.status = 'completed' THEN t.id END) as completed_tasks,
-                COUNT(DISTINCT g.id) as total_goals,
-                COUNT(DISTINCT de.id) as journal_entries
-            FROM users u
-            LEFT JOIN tasks t ON u.id = t.user_id
-            LEFT JOIN goals g ON u.id = g.user_id
-            LEFT JOIN daily_entries de ON u.id = de.user_id
-            GROUP BY u.id, u.username
-            ORDER BY total_tasks DESC
+                relname as table_name,
+                n_live_tup as row_count,
+                pg_size_pretty(pg_total_relation_size(relid)) as total_size,
+                pg_size_pretty(pg_relation_size(relid)) as data_size,
+                pg_size_pretty(pg_indexes_size(relid)) as index_size
+            FROM pg_stat_user_tables
+            ORDER BY n_live_tup DESC
         """, conn)
 
-        if not user_stats.empty:
+        if not table_stats.empty:
             st.dataframe(
-                user_stats,
+                table_stats,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "username": "Username",
-                    "total_tasks": "Total Tasks",
-                    "completed_tasks": "Completed Tasks",
-                    "total_goals": "Goals",
-                    "journal_entries": "Journal Entries"
+                    "table_name": "Table Name",
+                    "row_count": "Row Count",
+                    "total_size": "Total Size",
+                    "data_size": "Data Size",
+                    "index_size": "Index Size"
                 }
             )
+        else:
+            st.info("No table statistics available")
 
         st.markdown("---")
 
+        # Record counts per table
+        st.subheader("📈 Record Counts")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            users_count = pd.read_sql_query("SELECT COUNT(*) as count FROM users", conn).iloc[0]['count']
+            st.metric("👥 Users", users_count)
+
+            tasks_count = pd.read_sql_query("SELECT COUNT(*) as count FROM tasks", conn).iloc[0]['count']
+            st.metric("✅ Tasks", tasks_count)
+
+        with col2:
+            goals_count = pd.read_sql_query("SELECT COUNT(*) as count FROM goals", conn).iloc[0]['count']
+            st.metric("🎯 Goals", goals_count)
+
+            entries_count = pd.read_sql_query("SELECT COUNT(*) as count FROM daily_entries", conn).iloc[0]['count']
+            st.metric("📔 Journal Entries", entries_count)
+
+        with col3:
+            achievements_count = pd.read_sql_query("SELECT COUNT(*) as count FROM achievements", conn).iloc[0]['count']
+            st.metric("🏆 Achievements", achievements_count)
+
+            completed_tasks = pd.read_sql_query("SELECT COUNT(*) as count FROM tasks WHERE status = 'completed'", conn).iloc[0]['count']
+            st.metric("✔️ Completed Tasks", completed_tasks)
+
+        st.markdown("---")
+
+        # Database activity
+        st.subheader("📡 Connection & Activity")
+
+        cursor.execute("""
+            SELECT
+                numbackends as active_connections,
+                xact_commit as transactions_committed,
+                xact_rollback as transactions_rolled_back,
+                blks_read as blocks_read,
+                blks_hit as cache_hits
+            FROM pg_stat_database
+            WHERE datname = current_database()
+        """)
+        activity = cursor.fetchone()
+
+        if activity:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Active Connections", activity[0])
+            with col2:
+                st.metric("Transactions Committed", f"{activity[1]:,}")
+            with col3:
+                if activity[3] + activity[4] > 0:
+                    cache_hit_ratio = activity[4] / (activity[3] + activity[4]) * 100
+                    st.metric("Cache Hit Ratio", f"{cache_hit_ratio:.1f}%")
+                else:
+                    st.metric("Cache Hit Ratio", "N/A")
+
+        st.markdown("---")
+
+        # Recent activity
+        st.subheader("🕐 Recent Activity")
+
+        recent_tasks = pd.read_sql_query(db.convert_sql("""
+            SELECT u.username, t.title, t.status, t.created_at
+            FROM tasks t
+            JOIN users u ON t.user_id = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 5
+        """), conn)
+
+        if not recent_tasks.empty:
+            st.markdown("**Latest Tasks:**")
+            for _, task in recent_tasks.iterrows():
+                status_icon = "✅" if task['status'] == 'completed' else "⏳"
+                st.markdown(f"- {status_icon} **{task['title']}** by {task['username']}")
+
+    with tab1:
+        # Get all users
+        users = pd.read_sql_query("""
+            SELECT id, username, email, created_at
+            FROM users
+            ORDER BY created_at DESC
+        """, conn)
+
+        # Display user count
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Users", len(users))
+        with col2:
+            total_tasks = pd.read_sql_query("SELECT COUNT(*) as count FROM tasks", conn).iloc[0]['count']
+            st.metric("Total Tasks", total_tasks)
+        with col3:
+            total_goals = pd.read_sql_query("SELECT COUNT(*) as count FROM goals", conn).iloc[0]['count']
+            st.metric("Total Goals", total_goals)
+
+        st.markdown("---")
+
+        # Display users table
+        st.subheader("📋 Registered Users")
+
+        if not users.empty:
+            # Format the dataframe for display
+            display_df = users.copy()
+            display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "id": "User ID",
+                    "username": "Username",
+                    "email": "Email",
+                    "created_at": "Registered On"
+                }
+            )
+
+            st.markdown("---")
+
+            # User statistics
+            st.subheader("📊 User Activity Statistics")
+
+            user_stats = pd.read_sql_query("""
+                SELECT
+                    u.username,
+                    COUNT(DISTINCT t.id) as total_tasks,
+                    COUNT(DISTINCT CASE WHEN t.status = 'completed' THEN t.id END) as completed_tasks,
+                    COUNT(DISTINCT g.id) as total_goals,
+                    COUNT(DISTINCT de.id) as journal_entries
+                FROM users u
+                LEFT JOIN tasks t ON u.id = t.user_id
+                LEFT JOIN goals g ON u.id = g.user_id
+                LEFT JOIN daily_entries de ON u.id = de.user_id
+                GROUP BY u.id, u.username
+                ORDER BY total_tasks DESC
+            """, conn)
+
+            if not user_stats.empty:
+                st.dataframe(
+                    user_stats,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "username": "Username",
+                        "total_tasks": "Total Tasks",
+                        "completed_tasks": "Completed Tasks",
+                        "total_goals": "Goals",
+                        "journal_entries": "Journal Entries"
+                    }
+                )
+
+    with tab3:
         # Delete user section
         st.subheader("⚠️ Delete User")
         st.warning("Deleting a user will permanently remove all their data (tasks, goals, journal entries, achievements)")
+
+        # Get users for delete dropdown
+        users = pd.read_sql_query("""
+            SELECT id, username, email, created_at
+            FROM users
+            ORDER BY created_at DESC
+        """, conn)
 
         # Use a simpler approach without forms
         col1, col2 = st.columns(2)
@@ -2324,9 +2473,6 @@ def show_admin_panel(user_id):
                             # Use the existing connection instead of creating a new one
                             delete_cursor = conn.cursor()
 
-                            # Disable foreign keys
-                            delete_cursor.execute("PRAGMA foreign_keys = OFF")
-
                             # Delete in correct order to avoid foreign key constraints
                             delete_cursor.execute(db.convert_sql("DELETE FROM achievements WHERE user_id = ?"), (delete_user_id,))
                             achievements_deleted = delete_cursor.rowcount
@@ -2364,20 +2510,9 @@ def show_admin_panel(user_id):
                 st.error("❌ You must type 'DELETE' exactly (all caps) to confirm")
             else:
                 st.warning("⚠️ Please type 'DELETE' to confirm deletion")
-    else:
-        st.info("No users registered yet!")
 
-    # Close connection if it's still open
-    try:
-        conn.close()
-    except:
-        pass
-
-    # Database info
-    st.markdown("---")
-    st.subheader("💾 Database Information")
-    st.caption("Database: productivity_planner_multiuser.db")
-    st.caption("⚠️ Note: Passwords are securely hashed with Argon2 and cannot be viewed")
+    # Close connection at the end
+    conn.close()
 
 def show_ai_assistant(user_id):
     st.header("🤖 AI Productivity Assistant")
