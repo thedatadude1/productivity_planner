@@ -2219,18 +2219,58 @@ def show_admin_panel(user_id):
         cursor.execute("SELECT pg_size_pretty(pg_database_size(current_database()))")
         db_size = cursor.fetchone()[0]
 
+        # Get raw database size in bytes for storage calculation
+        cursor.execute("SELECT pg_database_size(current_database())")
+        db_size_bytes = cursor.fetchone()[0]
+
         # Get connection info
         cursor.execute("SELECT inet_server_addr(), inet_server_port()")
         server_info = cursor.fetchone()
 
+        # Neon Storage Section
+        st.markdown("### 💾 Neon Storage Usage")
+
+        # Neon free tier is 512 MB (0.5 GB)
+        neon_free_tier_bytes = 512 * 1024 * 1024  # 512 MB in bytes
+        storage_used_pct = (db_size_bytes / neon_free_tier_bytes) * 100
+        storage_remaining = neon_free_tier_bytes - db_size_bytes
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Storage Used", db_size)
+        with col2:
+            st.metric("Free Tier Limit", "512 MB")
+        with col3:
+            st.metric("Storage Remaining", f"{storage_remaining / (1024*1024):.2f} MB")
+        with col4:
+            st.metric("Usage", f"{storage_used_pct:.2f}%")
+
+        # Storage progress bar
+        st.markdown("**Storage Usage Progress:**")
+        st.progress(min(storage_used_pct / 100, 1.0))
+
+        if storage_used_pct > 80:
+            st.warning("⚠️ Storage usage is above 80%. Consider upgrading your Neon plan or cleaning up old data.")
+        elif storage_used_pct > 50:
+            st.info("📊 Storage usage is moderate. You have room to grow.")
+        else:
+            st.success("✅ Storage usage is healthy!")
+
+        st.markdown("---")
+
         # Display database connection info
+        st.markdown("### 🔌 Connection Info")
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Database Name", db_name)
         with col2:
-            st.metric("Database Size", db_size)
+            st.metric("Host Region", "us-west-2 (AWS)")
         with col3:
-            st.metric("Server Port", server_info[1] if server_info[1] else "N/A")
+            st.metric("Server Port", server_info[1] if server_info[1] else "5432")
+
+        # Neon connection details
+        st.markdown("**Neon Endpoint:**")
+        st.code("ep-icy-dust-af18qqjt-pooler.c-2.us-west-2.aws.neon.tech", language=None)
 
         st.markdown("---")
 
