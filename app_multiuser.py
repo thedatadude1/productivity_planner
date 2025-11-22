@@ -1500,13 +1500,73 @@ def show_achievements_page(user_id):
     # AI Assistant Widget
     show_ai_chat_widget(user_id, "achievements")
 
+    # Get current stats for progress tracking
+    stats = get_productivity_stats(user_id)
     achievements = get_achievements(user_id)
 
+    # Show earned achievements
+    st.subheader("🎖️ Earned Achievements")
     if not achievements.empty:
-        for _, achievement in achievements.iterrows():
-            st.markdown(f'<div class="achievement-badge">{achievement["icon"]} {achievement["name"]} - {achievement["description"]}</div>', unsafe_allow_html=True)
+        cols = st.columns(3)
+        for idx, (_, achievement) in enumerate(achievements.iterrows()):
+            with cols[idx % 3]:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+                            padding: 1rem; border-radius: 10px; text-align: center; margin-bottom: 1rem;">
+                    <div style="font-size: 2rem;">{achievement["icon"]}</div>
+                    <div style="font-weight: bold;">{achievement["name"]}</div>
+                    <div style="font-size: 0.8rem; color: gray;">{achievement["description"]}</div>
+                </div>
+                """, unsafe_allow_html=True)
     else:
-        st.info("Complete tasks to earn achievements!")
+        st.info("No achievements earned yet. Keep completing tasks!")
+
+    st.markdown("---")
+
+    # Show progress toward next achievements
+    st.subheader("📊 Progress Toward Next Achievements")
+
+    # Task-based achievements progress
+    task_milestones = [
+        (5, "First Steps", "Complete 5 tasks", "🌱"),
+        (25, "Getting Started", "Complete 25 tasks", "🚀"),
+        (50, "Halfway Hero", "Complete 50 tasks", "⭐"),
+        (100, "Century Club", "Complete 100 tasks", "💯"),
+    ]
+
+    # Streak-based achievements progress
+    streak_milestones = [
+        (7, "Week Warrior", "Maintain a 7-day streak", "🔥"),
+        (30, "Monthly Master", "Maintain a 30-day streak", "👑"),
+    ]
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**📝 Task Achievements**")
+        completed = stats['completed_tasks']
+        for threshold, name, desc, icon in task_milestones:
+            # Check if already earned
+            earned = not achievements.empty and name in achievements['name'].values
+            if earned:
+                st.markdown(f"✅ {icon} **{name}** - Earned!")
+            else:
+                progress = min(completed / threshold * 100, 100)
+                st.markdown(f"{icon} **{name}** ({completed}/{threshold} tasks)")
+                st.progress(progress / 100)
+
+    with col2:
+        st.markdown("**🔥 Streak Achievements**")
+        streak = stats['streak']
+        for threshold, name, desc, icon in streak_milestones:
+            # Check if already earned
+            earned = not achievements.empty and name in achievements['name'].values
+            if earned:
+                st.markdown(f"✅ {icon} **{name}** - Earned!")
+            else:
+                progress = min(streak / threshold * 100, 100)
+                st.markdown(f"{icon} **{name}** ({streak}/{threshold} days)")
+                st.progress(progress / 100)
 
 def show_analytics(user_id):
     st.header("📈 Productivity Analytics & Insights")
