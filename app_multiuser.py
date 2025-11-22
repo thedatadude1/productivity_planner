@@ -24,8 +24,8 @@ except ImportError:
 
 # Page configuration
 st.set_page_config(
-    page_title="Ultimate Productivity Planner",
-    page_icon="🚀",
+    page_title="Pro Planner",
+    page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -795,7 +795,7 @@ def show_ai_chat_widget(user_id, context_info=""):
 
 # Authentication Page
 def show_auth_page():
-    st.markdown('<h1 class="main-header">🚀 Ultimate Productivity Planner</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">Pro Planner</h1>', unsafe_allow_html=True)
     st.markdown(f'<div class="motivational-quote">💭 {get_daily_quote()}</div>', unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["Login", "Sign Up"])
@@ -866,7 +866,7 @@ def main():
 
     user_id = st.session_state.user_id
 
-    st.markdown('<h1 class="main-header">🚀 Ultimate Productivity Planner</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">Pro Planner</h1>', unsafe_allow_html=True)
     st.markdown(f'<div class="motivational-quote">💭 {get_daily_quote()}</div>', unsafe_allow_html=True)
 
     # Sidebar with logout
