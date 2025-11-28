@@ -614,13 +614,18 @@ def ai_create_tasks(user_prompt, user_id):
     if not GEMINI_AVAILABLE:
         return 0, "Google Generative AI library not available"
 
-    system_prompt = """You are a productivity assistant. Convert user requests into structured tasks.
+    # Get today's date for the prompt
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    system_prompt = f"""You are a productivity assistant. Convert user requests into structured tasks.
     Return ONLY a valid JSON object with a "tasks" key containing an array of task objects.
     Each task must have: title, description, category (Work/Personal/Health/Learning/Finance/Other),
     priority (high/medium/low), due_date (YYYY-MM-DD), estimated_hours (number).
 
-    Example: {"tasks": [{"title": "Finish project report", "description": "Complete and submit",
-    "category": "Work", "priority": "high", "due_date": "2025-01-17", "estimated_hours": 3.0}]}
+    IMPORTANT: Today's date is {today_str}. Unless the user specifies a different date, use TODAY as the due_date.
+
+    Example: {{"tasks": [{{"title": "Finish project report", "description": "Complete and submit",
+    "category": "Work", "priority": "high", "due_date": "{today_str}", "estimated_hours": 3.0}}]}}
     """
 
     try:
@@ -647,7 +652,7 @@ def ai_create_tasks(user_prompt, user_id):
                 task.get("description", ""),
                 task.get("category", "Other"),
                 task.get("priority", "medium"),
-                task.get("due_date", (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")),
+                task.get("due_date", datetime.now().strftime("%Y-%m-%d")),  # Default to today
                 task.get("estimated_hours", 1.0),
                 []
             )
