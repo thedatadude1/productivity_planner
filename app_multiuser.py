@@ -961,6 +961,7 @@ def main():
         "📝 Daily Journal",
         "🏆 Achievements",
         "📈 Analytics",
+        "💪 Workout/Diet Tracker",
         "🤖 AI Assistant"
     ]
 
@@ -980,10 +981,12 @@ def main():
         show_calendar(user_id)
     elif page == "📝 Daily Journal":
         show_daily_journal(user_id)
-    elif page == "🏆 Achievements":
+    elif page == "�� Achievements":
         show_achievements_page(user_id)
     elif page == "📈 Analytics":
         show_analytics(user_id)
+    elif page == "💪 Workout/Diet Tracker":
+        show_fitness_tracker(user_id)
     elif page == "🤖 AI Assistant":
         show_ai_assistant(user_id)
     elif page == "👥 Admin Panel":
@@ -2613,6 +2616,332 @@ def show_admin_panel(user_id):
 
     # Close connection at the end
     conn.close()
+
+def show_fitness_tracker(user_id):
+    st.header("💪 Workout & Diet Tracker")
+
+    # Create tabs for different sections
+    tab1, tab2, tab3, tab4 = st.tabs(["🏋️ Log Workout", "🍽️ Log Food", "📊 My Stats", "⚙️ Profile Setup"])
+
+    with tab1:
+        st.subheader("🏋️ Log Your Workout")
+        st.markdown("Tell me about your workout and I'll log it for you!")
+
+        # AI Workout Logging
+        workout_input = st.text_area(
+            "Describe your workout",
+            placeholder="E.g., 'Did 3 sets of 10 bench press at 185 lbs, then ran 3 miles in 24 minutes'",
+            height=100
+        )
+
+        if st.button("🤖 Log Workout with AI", type="primary"):
+            if workout_input and GEMINI_AVAILABLE:
+                with st.spinner("Analyzing your workout..."):
+                    today_str = datetime.now().strftime("%Y-%m-%d")
+                    system_prompt = f"""You are a fitness assistant. Parse workout information and return JSON.
+                    Today's date is {today_str}. Return ONLY valid JSON with "workouts" array.
+                    Each workout: exercise_name, exercise_type (strength/cardio/flexibility/sports), sets, reps, weight (lbs),
+                    distance (miles), duration_minutes, calories_burned, notes.
+                    Example: {{"workouts": [{{"exercise_name": "Bench Press", "exercise_type": "strength", "sets": 3,
+                    "reps": 10, "weight": 185, "distance": null, "duration_minutes": 20, "calories_burned": 150,
+                    "notes": "Felt strong"}}]}}"""
+
+                    response_text, status = call_gemini(system_prompt, workout_input)
+
+                    if response_text and status == "success":
+                        try:
+                            if "```json" in response_text:
+                                response_text = response_text.split("```json")[1].split("```")[0].strip()
+                            elif "```" in response_text:
+                                response_text = response_text.split("```")[1].split("```")[0].strip()
+
+                            workouts_data = json.loads(response_text)
+                            conn = db.get_connection()
+                            cursor = conn.cursor()
+                            workouts_added = 0
+
+                            for workout in workouts_data.get("workouts", []):
+                                cursor.execute(db.convert_sql("""
+                                    INSERT INTO workout_logs
+                                    (user_id, workout_date, exercise_name, exercise_type, sets, reps, weight,
+                                     distance, duration_minutes, calories_burned, notes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """), (
+                                    user_id, today_str,
+                                    workout.get("exercise_name", "Unknown"),
+                                    workout.get("exercise_type", "other"),
+                                    workout.get("sets"), workout.get("reps"), workout.get("weight"),
+                                    workout.get("distance"), workout.get("duration_minutes", 0),
+                                    workout.get("calories_burned", 0), workout.get("notes", "")
+                                ))
+                                workouts_added += 1
+
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Logged {workouts_added} workout(s)!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                    else:
+                        st.error("Failed to process workout")
+            elif not GEMINI_AVAILABLE:
+                st.error("Gemini AI not available")
+            else:
+                st.warning("Please describe your workout")
+
+        # Show recent workouts
+        st.markdown("---")
+        st.subheader("📝 Recent Workouts")
+        conn = db.get_connection()
+        recent_workouts = pd.read_sql_query(db.convert_sql("""
+            SELECT workout_date, exercise_name, exercise_type, sets, reps, weight, distance,
+                   duration_minutes, calories_burned, notes
+            FROM workout_logs
+            WHERE user_id = ?
+            ORDER BY workout_date DESC, created_at DESC
+            LIMIT 10
+        """), conn, params=[user_id])
+        conn.close()
+
+        if not recent_workouts.empty:
+            for _, w in recent_workouts.iterrows():
+                with st.expander(f"{w['workout_date']} - {w['exercise_name']} ({w['exercise_type']})"):
+                    cols = st.columns(4)
+                    if pd.notna(w['sets']) and pd.notna(w['reps']):
+                        cols[0].metric("Sets × Reps", f"{int(w['sets'])} × {int(w['reps'])}")
+                    if pd.notna(w['weight']):
+                        cols[1].metric("Weight", f"{w['weight']} lbs")
+                    if pd.notna(w['distance']):
+                        cols[2].metric("Distance", f"{w['distance']} mi")
+                    if pd.notna(w['duration_minutes']):
+                        cols[3].metric("Duration", f"{int(w['duration_minutes'])} min")
+                    if w['notes']:
+                        st.markdown(f"**Notes:** {w['notes']}")
+        else:
+            st.info("No workouts logged yet. Start logging above!")
+
+    with tab2:
+        st.subheader("🍽️ Log Your Meals")
+        st.markdown("Tell me what you ate or upload a photo!")
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            food_input = st.text_area(
+                "Describe your meal",
+                placeholder="E.g., 'Grilled chicken breast, brown rice, and steamed broccoli'",
+                height=100
+            )
+        with col2:
+            st.markdown("**Or upload a photo:**")
+            food_image = st.file_uploader("Upload food image", type=['png', 'jpg', 'jpeg'])
+            if food_image:
+                st.image(food_image, caption="Food photo", use_column_width=True)
+
+        if st.button("🤖 Log Food with AI", type="primary"):
+            if (food_input or food_image) and GEMINI_AVAILABLE:
+                with st.spinner("Analyzing nutrition..."):
+                    today_str = datetime.now().strftime("%Y-%m-%d")
+                    system_prompt = f"""You are a nutrition expert. Analyze food and return JSON.
+                    Today's date is {today_str}. Return ONLY valid JSON with "meals" array.
+                    Each meal: meal_type (breakfast/lunch/dinner/snack), food_description, calories, protein (g),
+                    carbs (g), fats (g), notes. Be accurate with portions and calories.
+                    Example: {{"meals": [{{"meal_type": "lunch", "food_description": "Grilled chicken with rice",
+                    "calories": 450, "protein": 45, "carbs": 40, "fats": 8, "notes": "Healthy meal"}}]}}"""
+
+                    prompt = food_input if food_input else "Analyze the nutritional content of this food image"
+                    response_text, status = call_gemini(system_prompt, prompt)
+
+                    if response_text and status == "success":
+                        try:
+                            if "```json" in response_text:
+                                response_text = response_text.split("```json")[1].split("```")[0].strip()
+                            elif "```" in response_text:
+                                response_text = response_text.split("```")[1].split("```")[0].strip()
+
+                            meals_data = json.loads(response_text)
+                            conn = db.get_connection()
+                            cursor = conn.cursor()
+                            meals_added = 0
+
+                            for meal in meals_data.get("meals", []):
+                                cursor.execute(db.convert_sql("""
+                                    INSERT INTO diet_logs
+                                    (user_id, meal_date, meal_type, food_description, calories, protein, carbs, fats, notes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """), (
+                                    user_id, today_str,
+                                    meal.get("meal_type", "snack"),
+                                    meal.get("food_description", "Food"),
+                                    meal.get("calories", 0), meal.get("protein", 0),
+                                    meal.get("carbs", 0), meal.get("fats", 0),
+                                    meal.get("notes", "")
+                                ))
+                                meals_added += 1
+
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Logged {meals_added} meal(s)!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                    else:
+                        st.error("Failed to process food")
+            elif not GEMINI_AVAILABLE:
+                st.error("Gemini AI not available")
+            else:
+                st.warning("Please describe your meal or upload a photo")
+
+        # Show today's meals
+        st.markdown("---")
+        st.subheader("📅 Today's Meals")
+        conn = db.get_connection()
+        today = datetime.now().strftime("%Y-%m-%d")
+        todays_meals = pd.read_sql_query(db.convert_sql("""
+            SELECT meal_type, food_description, calories, protein, carbs, fats, notes, meal_time
+            FROM diet_logs
+            WHERE user_id = ? AND meal_date = ?
+            ORDER BY meal_time DESC
+        """), conn, params=[user_id, today])
+
+        if not todays_meals.empty:
+            total_cals = todays_meals['calories'].sum()
+            total_protein = todays_meals['protein'].sum()
+            st.metric("Total Calories Today", f"{int(total_cals)} cal")
+
+            for _, m in todays_meals.iterrows():
+                with st.expander(f"{m['meal_type'].title()} - {m['food_description']} ({m['calories']} cal)"):
+                    cols = st.columns(3)
+                    cols[0].metric("Protein", f"{m['protein']}g")
+                    cols[1].metric("Carbs", f"{m['carbs']}g")
+                    cols[2].metric("Fats", f"{m['fats']}g")
+                    if m['notes']:
+                        st.markdown(f"**Notes:** {m['notes']}")
+        else:
+            st.info("No meals logged today. Start logging above!")
+
+        conn.close()
+
+    with tab3:
+        st.subheader("📊 Your Fitness Stats")
+        conn = db.get_connection()
+
+        # Personal Records
+        st.markdown("### 🏆 Personal Records (PRs)")
+        strength_prs = pd.read_sql_query(db.convert_sql("""
+            SELECT exercise_name, MAX(weight) as max_weight, workout_date
+            FROM workout_logs
+            WHERE user_id = ? AND exercise_type = 'strength' AND weight IS NOT NULL
+            GROUP BY exercise_name
+            ORDER BY max_weight DESC
+            LIMIT 5
+        """), conn, params=[user_id])
+
+        if not strength_prs.empty:
+            st.markdown("**💪 Strength PRs:**")
+            for _, pr in strength_prs.iterrows():
+                st.markdown(f"- **{pr['exercise_name']}**: {pr['max_weight']} lbs")
+        else:
+            st.info("Log some strength workouts to see your PRs!")
+
+        # Weight Progress
+        st.markdown("---")
+        st.markdown("### ⚖️ Weight & Calorie Tracking")
+
+        profile = pd.read_sql_query(db.convert_sql("""
+            SELECT * FROM fitness_profile WHERE user_id = ?
+        """), conn, params=[user_id])
+
+        if not profile.empty:
+            p = profile.iloc[0]
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Current Weight", f"{p['current_weight']} lbs")
+            col2.metric("Goal Weight", f"{p['goal_weight']} lbs")
+            col3.metric("To Lose", f"{p['current_weight'] - p['goal_weight']:.1f} lbs")
+
+            # Get recent calorie intake
+            recent_cals = pd.read_sql_query(db.convert_sql("""
+                SELECT meal_date, SUM(calories) as daily_calories
+                FROM diet_logs
+                WHERE user_id = ? AND meal_date >= CURRENT_DATE - INTERVAL '30 days'
+                GROUP BY meal_date
+                ORDER BY meal_date DESC
+            """), conn, params=[user_id])
+
+            if not recent_cals.empty:
+                avg_cals = recent_cals['daily_calories'].mean()
+                daily_goal = p['daily_calorie_goal']
+                deficit = daily_goal - avg_cals if avg_cals < daily_goal else 0
+
+                st.markdown(f"**Average Daily Calories (Last 30 days):** {int(avg_cals)} cal")
+                st.markdown(f"**Daily Calorie Goal:** {daily_goal} cal")
+                st.markdown(f"**Daily Deficit:** {int(deficit)} cal")
+
+                if deficit > 0:
+                    # 3500 calories = 1 lb
+                    days_to_goal = ((p['current_weight'] - p['goal_weight']) * 3500) / deficit
+                    goal_date = datetime.now() + timedelta(days=days_to_goal)
+                    st.success(f"📅 **Estimated Goal Date:** {goal_date.strftime('%B %d, %Y')} ({int(days_to_goal)} days)")
+                    st.info(f"💪 **Weekly Loss Rate:** {(deficit * 7 / 3500):.2f} lbs/week")
+        else:
+            st.warning("Set up your profile in the Profile Setup tab to see weight tracking!")
+
+        conn.close()
+
+    with tab4:
+        st.subheader("⚙️ Fitness Profile Setup")
+        st.markdown("Set your goals and preferences")
+
+        conn = db.get_connection()
+        profile = pd.read_sql_query(db.convert_sql("""
+            SELECT * FROM fitness_profile WHERE user_id = ?
+        """), conn, params=[user_id])
+
+        existing = not profile.empty
+        defaults = profile.iloc[0] if existing else {}
+
+        with st.form("fitness_profile"):
+            col1, col2 = st.columns(2)
+            with col1:
+                current_weight = st.number_input("Current Weight (lbs)",
+                    value=float(defaults.get('current_weight', 150)), min_value=50.0, max_value=500.0)
+                goal_weight = st.number_input("Goal Weight (lbs)",
+                    value=float(defaults.get('goal_weight', 140)), min_value=50.0, max_value=500.0)
+                height_cm = st.number_input("Height (cm)",
+                    value=float(defaults.get('height_cm', 170)), min_value=100.0, max_value=250.0)
+            with col2:
+                age = st.number_input("Age",
+                    value=int(defaults.get('age', 30)), min_value=10, max_value=120)
+                gender = st.selectbox("Gender", ["Male", "Female", "Other"],
+                    index=0 if not existing else ["Male", "Female", "Other"].index(defaults.get('gender', 'Male')))
+                activity_level = st.selectbox("Activity Level",
+                    ["Sedentary", "Lightly Active", "Moderately Active", "Very Active", "Extremely Active"],
+                    index=1 if not existing else ["Sedentary", "Lightly Active", "Moderately Active", "Very Active", "Extremely Active"].index(defaults.get('activity_level', 'Lightly Active')))
+
+            daily_calorie_goal = st.number_input("Daily Calorie Goal",
+                value=int(defaults.get('daily_calorie_goal', 2000)), min_value=1000, max_value=5000)
+
+            submitted = st.form_submit_button("💾 Save Profile", use_container_width=True, type="primary")
+
+            if submitted:
+                cursor = conn.cursor()
+                if existing:
+                    cursor.execute(db.convert_sql("""
+                        UPDATE fitness_profile
+                        SET current_weight=?, goal_weight=?, height_cm=?, age=?, gender=?,
+                            activity_level=?, daily_calorie_goal=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE user_id=?
+                    """), (current_weight, goal_weight, height_cm, age, gender, activity_level, daily_calorie_goal, user_id))
+                else:
+                    cursor.execute(db.convert_sql("""
+                        INSERT INTO fitness_profile
+                        (user_id, current_weight, goal_weight, height_cm, age, gender, activity_level, daily_calorie_goal)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """), (user_id, current_weight, goal_weight, height_cm, age, gender, activity_level, daily_calorie_goal))
+                conn.commit()
+                st.success("✅ Profile saved!")
+                st.rerun()
+
+        conn.close()
 
 def show_ai_assistant(user_id):
     st.header("🤖 AI Productivity Assistant")
