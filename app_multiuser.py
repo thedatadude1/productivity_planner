@@ -955,13 +955,13 @@ def main():
     # Build navigation menu based on admin status
     nav_options = [
         "📊 Dashboard",
+        "💪 Workout/Diet Tracker",
         "✅ Tasks",
         "🎯 Goals",
         "📅 Calendar View",
         "📝 Daily Journal",
         "🏆 Achievements",
         "📈 Analytics",
-        "💪 Workout/Diet Tracker",
         "🤖 AI Assistant"
     ]
 
@@ -3146,4 +3146,4 @@ def show_ai_assistant(user_id):
 
 if __name__ == "__main__":
     main()
-# PostgreSQL Version - Updated with SQL GROUP BY fix
+# PostgreSQL Version - Workout/Diet Tracker moved below Dashboard
