@@ -2828,7 +2828,7 @@ def show_fitness_tracker(user_id):
         # Personal Records
         st.markdown("### 🏆 Personal Records (PRs)")
         strength_prs = pd.read_sql_query(db.convert_sql("""
-            SELECT exercise_name, MAX(weight) as max_weight, workout_date
+            SELECT exercise_name, MAX(weight) as max_weight
             FROM workout_logs
             WHERE user_id = ? AND exercise_type = 'strength' AND weight IS NOT NULL
             GROUP BY exercise_name
@@ -3146,4 +3146,4 @@ def show_ai_assistant(user_id):
 
 if __name__ == "__main__":
     main()
-# PostgreSQL Version - Updated Fri, Nov 21, 2025 10:06:22 AM
+# PostgreSQL Version - Updated with SQL GROUP BY fix
