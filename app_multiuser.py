@@ -177,6 +177,61 @@ class DatabaseManager:
             )
         """)
 
+        # Workout logs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS workout_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                workout_date DATE NOT NULL,
+                exercise_name TEXT NOT NULL,
+                exercise_type TEXT,
+                sets INTEGER,
+                reps INTEGER,
+                weight DOUBLE PRECISION,
+                distance DOUBLE PRECISION,
+                duration_minutes INTEGER,
+                calories_burned INTEGER,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
+        # Diet/Food logs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS diet_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                meal_date DATE NOT NULL,
+                meal_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                meal_type TEXT,
+                food_description TEXT NOT NULL,
+                calories INTEGER,
+                protein DOUBLE PRECISION,
+                carbs DOUBLE PRECISION,
+                fats DOUBLE PRECISION,
+                notes TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
+        # User fitness profile table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fitness_profile (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER UNIQUE NOT NULL,
+                current_weight DOUBLE PRECISION,
+                goal_weight DOUBLE PRECISION,
+                height_cm DOUBLE PRECISION,
+                age INTEGER,
+                gender TEXT,
+                activity_level TEXT,
+                daily_calorie_goal INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
         # Ensure admin account exists (for first-time setup)
         cursor.execute("SELECT id FROM users WHERE username = 'thedatadude'")
         admin_exists = cursor.fetchone()
